@@ -14,6 +14,11 @@ export const Router = {
   init() {
     window.addEventListener('hashchange', () => this.handleRoute());
     window.addEventListener('load', () => this.handleRoute());
+
+    if (!window.location.hash || window.location.hash === '#' || window.location.hash === '') {
+      window.location.hash = '#home';
+    }
+    this.handleRoute();
   },
 
   navigate(path) {

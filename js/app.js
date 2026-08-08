@@ -15,10 +15,13 @@ import { NotificationService } from './services/notification-service.js';
 window.ModalComponent = ModalComponent;
 window.NotificationService = NotificationService;
 
-document.addEventListener('DOMContentLoaded', async () => {
-  // Initialize Database seed / Firebase
-  await initFirebase();
-  DBService.initLocalStore();
+const initApp = async () => {
+  try {
+    DBService.initLocalStore();
+    initFirebase().catch(err => console.warn('Firebase init deferred:', err));
+  } catch (e) {
+    console.warn('Init store warning:', e);
+  }
 
   // Register All SPA Routes
   Router.register('home', (q) => { NavbarComponent.render(); PublicViews.renderHome(q); });
@@ -50,6 +53,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Customer Route
   Router.register('customer-dashboard', (q) => { NavbarComponent.render(); CustomerViews.renderCustomerDashboard(q); });
 
-  // Start Router
+  // Start Router immediately
   Router.init();
-});
+};
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

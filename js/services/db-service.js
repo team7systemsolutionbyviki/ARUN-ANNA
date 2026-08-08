@@ -87,21 +87,35 @@ export const DBService = {
   },
 
   // Fetch all orders
+  // Fetch all orders (Unified Local Storage + Firestore merge)
   async getOrders() {
     this.initLocalStore();
+    const localStr = localStorage.getItem(ORDERS_KEY);
+    let localOrders = localStr ? JSON.parse(localStr) : [];
+
     const { db, isDemo } = getServices();
     if (!isDemo && db) {
       try {
         const { collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
         const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const remoteOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // Merge remote and local orders by ID, keeping local un-synced orders
+        const map = new Map();
+        remoteOrders.forEach(o => map.set(o.id, o));
+        localOrders.forEach(o => {
+          if (!map.has(o.id)) map.set(o.id, o);
+        });
+
+        const merged = Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        localStorage.setItem(ORDERS_KEY, JSON.stringify(merged));
+        return merged;
       } catch (err) {
-        // Fallback to local storage engine silently
+        console.warn('Firestore fetch error, fallback to local storage:', err);
       }
     }
-    const local = localStorage.getItem(ORDERS_KEY);
-    return local ? JSON.parse(local) : [];
+    return localOrders;
   },
 
   // Find order by ID or Phone

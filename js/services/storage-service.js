@@ -30,8 +30,8 @@ export const StorageService = {
           return await getDownloadURL(fileRef);
         })();
 
-        // 1.2s timeout so network blocks or missing Firebase Storage buckets never freeze file selection
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Storage timeout")), 1200));
+        // 15-second timeout for cloud storage uploads
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Storage timeout")), 15000));
         const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]);
 
         return {
@@ -41,7 +41,7 @@ export const StorageService = {
           type: file.type || 'application/octet-stream'
         };
       } catch (err) {
-        console.warn("Storage upload network timeout/fallback to instant Blob URL:", err);
+        console.warn("Storage upload network timeout/fallback to instant Data URL:", err);
       }
     }
 
