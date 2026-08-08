@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="TEAM 7 SYSTEM SOLUTION - Online Printing & Document Order Management System. Fast A4, A3, Legal document printing, binding, lamination with Business UPI QR payment and live order tracking.">
+  <meta name="theme-color" content="#3b82f6">
+  <title>TEAM 7 SYSTEM SOLUTION | Online Document Printing & Order Management</title>
+  
+  <!-- Manifest & Favicon -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖨️</text></svg>">
+
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/public.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <!-- Dynamic Navigation Bar Container -->
+  <header id="navbar-wrapper"></header>
+
+  <!-- Main Single-Page App Content Container -->
+  <main id="app-content" class="animate-fade-in"></main>
+
+  <!-- Toast Notification Host -->
+  <div id="toast-container"></div>
+
+  <!-- Floating Contact Buttons (WhatsApp & Call) -->
+  <div class="floating-actions no-print">
+    <a href="https://wa.me/919789123456?text=Hi%20Team%207%20System!%20I%20have%20a%20printing%20inquiry." target="_blank" class="float-btn float-whatsapp" title="WhatsApp Chat">
+      💬
+    </a>
+    <a href="tel:+919789123456" class="float-btn float-call" title="Call Us">
+      📞
+    </a>
+  </div>
+
+  <!-- Footer Section -->
+  <footer class="footer no-print">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div class="footer-brand">
+            <span style="color:var(--primary);">TEAM 7</span> SYSTEM SOLUTION
+          </div>
+          <p class="text-muted" style="font-size:0.9rem; margin-bottom:1rem; max-width:320px;">
+            Premium document printing, thesis binding, CAD plot printing, and lamination services with instant UPI QR payments.
+          </p>
+          <p class="text-muted" style="font-size:0.85rem;">📍 No. 45, Tech Park Road, Sector 7, Chennai, TN - 600001</p>
+        </div>
+
+        <div>
+          <h4 class="footer-title">Quick Links</h4>
+          <ul class="footer-links">
+            <li><a href="#home">Home</a></li>
+            <li><a href="#services">Services Catalog</a></li>
+            <li><a href="#pricing">Price List</a></li>
+            <li><a href="#order">Order Print</a></li>
+            <li><a href="#track">Track Order</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-title">Portals & Admin</h4>
+          <ul class="footer-links">
+            <li><a href="#admin-login">Admin Login</a></li>
+            <li><a href="#admin-dashboard">Admin Dashboard</a></li>
+            <li><a href="#customer-dashboard">Customer Portal</a></li>
+            <li><a href="#faq">FAQ & Support</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 class="footer-title">Contact & Payment</h4>
+          <p class="text-muted" style="font-size:0.875rem;">Phone: +91 97891 23456</p>
+          <p class="text-muted" style="font-size:0.875rem;">Email: orders@team7system.com</p>
+          <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">Accepted Payment: GooglePay, PhonePe, Paytm, BHIM UPI</p>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>© 2026 TEAM 7 SYSTEM SOLUTION. All rights reserved.</div>
+        <div style="display:flex; gap:1.5rem;">
+          <a href="#privacy">Privacy Policy</a>
+          <a href="#terms">Terms & Conditions</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW reg error:', err));
+      });
+    }
+  </script>
+
+  <!-- ES6 App Entry Module -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
