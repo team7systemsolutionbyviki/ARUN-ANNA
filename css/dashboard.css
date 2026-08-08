@@ -287,8 +287,22 @@
 }
 
 @media print {
-  body * {
-    visibility: hidden;
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print, .sidebar, .dashboard-topbar, .floating-actions, .footer, header, button, select, input {
+    display: none !important;
+  }
+  .dashboard-main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+  .table-card, .printable-report, .invoice-container {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
   .invoice-container, .invoice-container * {
     visibility: visible;
@@ -302,8 +316,10 @@
     box-shadow: none;
     padding: 0;
   }
-  .no-print {
-    display: none !important;
+  .data-table th, .data-table td {
+    border-bottom: 1px solid #ddd !important;
+    padding: 6px 8px !important;
+    color: black !important;
   }
 }
 

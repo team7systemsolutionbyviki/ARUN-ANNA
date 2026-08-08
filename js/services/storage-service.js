@@ -15,14 +15,9 @@ export const StorageService = {
     });
   },
 
-  // Upload file with instant local BlobURL fallback
+  // Upload file with persistent Data URL fallback
   async uploadFile(file, pathFolder = 'uploads') {
-    let localUrl = '';
-    try {
-      localUrl = URL.createObjectURL(file);
-    } catch (e) {
-      localUrl = await this.readFileAsDataURL(file);
-    }
+    let localUrl = await this.readFileAsDataURL(file);
 
     const { storage, isDemo } = getServices();
 

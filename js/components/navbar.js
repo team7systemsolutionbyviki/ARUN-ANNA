@@ -3,27 +3,41 @@
    ========================================================================== */
 
 import { AuthService } from '../services/auth-service.js';
+import { DBService } from '../services/db-service.js';
 
 export const NavbarComponent = {
-  render() {
+  async render() {
     const user = AuthService.getCurrentUser();
+    const settings = await DBService.getSettings();
     const currentTheme = localStorage.getItem('team7_theme') || 'light';
     document.documentElement.setAttribute('data-theme', currentTheme);
 
-    const isDashboard = window.location.hash.startsWith('#admin') || window.location.hash.startsWith('#customer-dashboard');
+    const isDashboard = window.location.hash.startsWith('#admin');
     if (isDashboard) {
-      return; // Dashboard has its own sidebar & topbar
+      return; // Admin Dashboard has its own sidebar & topbar
     }
 
     const navContainer = document.getElementById('navbar-wrapper');
     if (!navContainer) return;
 
+    const brandLogoText = (settings.shopName || 'SHOP').slice(0, 2).toUpperCase();
+    const brandName = settings.shopName || 'TEAM 7 SYSTEM SOLUTION';
+
+    // Update Footer Brand & Document Title dynamically
+    const footerBrand = document.querySelector('.footer-brand');
+    if (footerBrand && settings.shopName) {
+      footerBrand.innerHTML = `<span style="color:var(--primary);">${settings.shopName}</span>`;
+    }
+    if (settings.shopName) {
+      document.title = `${settings.shopName} | Online Document Printing & Management`;
+    }
+
     navContainer.innerHTML = `
       <nav class="navbar">
         <div class="container">
           <a href="#home" class="nav-brand">
-            <div class="nav-brand-logo">T7</div>
-            <span>TEAM 7 SYSTEM</span>
+            <div class="nav-brand-logo">${brandLogoText}</div>
+            <span>${brandName}</span>
           </a>
 
           <ul class="nav-links">
@@ -42,13 +56,10 @@ export const NavbarComponent = {
               ${currentTheme === 'dark' ? '☀️' : '🌙'}
             </button>
 
-            ${user ? `
-              <a href="${user.role === 'ADMIN' ? '#admin-dashboard' : '#customer-dashboard'}" class="btn btn-sm btn-primary">
-                ${user.role === 'ADMIN' ? 'Admin Dashboard' : 'My Dashboard'}
-              </a>
+            ${(user && user.role === 'CUSTOMER') ? `
+              <a href="#customer-dashboard" class="btn btn-sm btn-primary">My Dashboard</a>
             ` : `
               <a href="#order" class="btn btn-sm btn-primary glow-effect">Print Now</a>
-              <a href="#admin-login" class="btn btn-sm btn-secondary">Admin</a>
             `}
 
             <button class="mobile-nav-toggle" id="mobile-nav-toggle">☰</button>

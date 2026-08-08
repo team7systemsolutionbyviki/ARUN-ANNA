@@ -13,7 +13,10 @@ export const InvoiceComponent = {
       <div class="invoice-container" id="printable-invoice">
         <div class="no-print" style="margin-bottom:1.5rem; display:flex; justify-content:space-between; align-items:center;">
           <a href="#admin-orders" class="btn btn-sm btn-secondary">← Back to Orders</a>
-          <button onclick="window.print()" class="btn btn-sm btn-primary">🖨️ Print Invoice</button>
+          <div style="display:flex; gap:0.5rem;">
+            <button onclick="if(window.sendWhatsAppInvoice) window.sendWhatsAppInvoice('${order.id}')" class="btn btn-sm btn-success">💬 Send via WhatsApp</button>
+            <button onclick="window.print()" class="btn btn-sm btn-primary">🖨️ Print Invoice</button>
+          </div>
         </div>
 
         <div class="invoice-header">
@@ -80,6 +83,14 @@ export const InvoiceComponent = {
                 <td>${pricing.totalPages || 1} pgs</td>
                 <td>-</td>
                 <td style="text-align:right;">${formatCurrency(pricing.laminationCost)}</td>
+              </tr>
+            ` : ''}
+            ${pricing.deliveryFee > 0 ? `
+              <tr>
+                <td>Delivery Charge (${pricing.deliveryZone || 'Doorstep Delivery'})</td>
+                <td>1 shipment</td>
+                <td>-</td>
+                <td style="text-align:right;">${formatCurrency(pricing.deliveryFee)}</td>
               </tr>
             ` : ''}
           </tbody>

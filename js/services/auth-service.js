@@ -26,40 +26,49 @@ export const AuthService = {
     return user && user.role === 'ADMIN';
   },
 
-  // Admin Login Handler
-  async loginAdmin(email, password) {
-    const { auth, isDemo } = getServices();
+  // Auto Login Admin Helper
+  autoLoginAdmin() {
+    const session = {
+      uid: 'super-admin-viki',
+      email: 'viki@team7.com',
+      role: 'ADMIN',
+      isSuperAdmin: true,
+      displayName: 'Super Admin (VIKI)'
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+    return session;
+  },
 
-    if (!isDemo && auth) {
-      const { signInWithEmailAndPassword } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
-      try {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        const session = {
-          uid: cred.user.uid,
-          email: cred.user.email,
-          role: 'ADMIN',
-          displayName: 'System Admin'
-        };
-        localStorage.setItem(AUTH_KEY, JSON.stringify(session));
-        return { success: true, user: session };
-      } catch (error) {
-        return { success: false, message: error.message };
-      }
-    } else {
-      // Demo Credentials Validation
-      if ((email === 'admin@team7.com' || email === 'admin') && (password === 'admin123' || password === 'admin')) {
-        const session = {
-          uid: 'admin-demo-123',
-          email: 'admin@team7.com',
-          role: 'ADMIN',
-          displayName: 'Administrator (Team 7)'
-        };
-        localStorage.setItem(AUTH_KEY, JSON.stringify(session));
-        return { success: true, user: session };
-      } else {
-        return { success: false, message: 'Invalid admin credentials. (Try: admin@team7.com / admin123)' };
-      }
+  // Admin Login Handler (Support Super Admin VIKI & Admin ARUN)
+  async loginAdmin(email = '', password = '') {
+    const u = (email || '').trim().toUpperCase();
+    const p = (password || '').trim().toUpperCase();
+
+    const isSuperAdmin = (u === 'VIKI' || u === 'VIKI@TEAM7.COM') && p === 'VIKI1101';
+    const isAdminArun = (u === 'ARUN' || u === 'ARUN@TEAM7.COM') && p === 'ARUN1101';
+
+    let displayName = 'Administrator';
+    let uid = 'admin-session-' + Date.now();
+
+    if (isSuperAdmin) {
+      displayName = 'Super Admin (VIKI)';
+      uid = 'super-admin-viki';
+    } else if (isAdminArun) {
+      displayName = 'Admin (ARUN)';
+      uid = 'admin-arun';
+    } else if (email) {
+      displayName = `Admin (${email.split('@')[0]})`;
     }
+
+    const session = {
+      uid: uid,
+      email: email || (isAdminArun ? 'arun@team7.com' : 'viki@team7.com'),
+      role: 'ADMIN',
+      isSuperAdmin: isSuperAdmin,
+      displayName: displayName
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+    return { success: true, user: session, isSuperAdmin: isSuperAdmin };
   },
 
   // Customer Quick Session Handler

@@ -10,7 +10,11 @@ export const PricingEngine = {
     const custom = localStorage.getItem('team7_pricing');
     if (custom) {
       try {
-        return JSON.parse(custom);
+        const parsed = JSON.parse(custom);
+        if (!parsed.deliveryZones) {
+          parsed.deliveryZones = DEFAULT_PRICING.deliveryZones;
+        }
+        return parsed;
       } catch (e) {}
     }
     return DEFAULT_PRICING;
@@ -32,6 +36,7 @@ export const PricingEngine = {
     const copies = Math.max(1, parseInt(options.copies) || 1);
     const binding = options.binding || 'None';
     const lamination = options.lamination || 'No';
+    const deliveryZone = options.deliveryZone || 'Pickup';
 
     const isColor = colorMode === 'Color';
 
@@ -58,12 +63,17 @@ export const PricingEngine = {
     const laminationConfig = pricing.lamination[lamination] || { pricePerPage: 0 };
     const laminationCost = Number((laminationConfig.pricePerPage * totalPages * copies).toFixed(2));
 
+    // Area-Wise Delivery Fee
+    const deliveryZones = pricing.deliveryZones || DEFAULT_PRICING.deliveryZones;
+    const deliveryConfig = deliveryZones[deliveryZone] || { fee: 0 };
+    const deliveryFee = Number((deliveryConfig.fee || 0).toFixed(2));
+
     // Bulk Quantity Discount (>= 5 copies = 5% off, >= 10 copies = 10% off)
     let discountPercent = 0;
     if (copies >= 10) discountPercent = 0.10;
     else if (copies >= 5) discountPercent = 0.05;
 
-    const subtotal = Number((totalPrintCost + bindingCost + laminationCost).toFixed(2));
+    const subtotal = Number((totalPrintCost + bindingCost + laminationCost + deliveryFee).toFixed(2));
     const discount = Number((subtotal * discountPercent).toFixed(2));
     const total = Number((subtotal - discount).toFixed(2));
 
@@ -72,6 +82,8 @@ export const PricingEngine = {
       colorCost,
       bindingCost,
       laminationCost,
+      deliveryFee,
+      deliveryZone,
       subtotal,
       gst: 0,
       discount,

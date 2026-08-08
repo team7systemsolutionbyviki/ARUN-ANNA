@@ -57,6 +57,13 @@ export const DEFAULT_PRICING = {
   lamination: {
     "No": { pricePerPage: 0 },
     "Yes": { pricePerPage: 12.00 }
+  },
+  deliveryZones: {
+    "Pickup": { fee: 0, label: "Store Pickup (Self Collection - Free)" },
+    "Zone 1 (Anna Nagar / Nearby)": { fee: 30.00, label: "Local Area Zone 1 (Within 5 km) - ₹30" },
+    "Zone 2 (Velachery / Central)": { fee: 50.00, label: "City Area Zone 2 (5-12 km) - ₹50" },
+    "Zone 3 (Tambaram / Suburbs)": { fee: 80.00, label: "Extended Area Zone 3 (12-20 km) - ₹80" },
+    "Express Urgent Doorstep": { fee: 120.00, label: "Express Same-Day Priority Delivery - ₹120" }
   }
 };
 
@@ -111,6 +118,12 @@ export const DEFAULT_SERVICES = [
   }
 ];
 
+const SAMPLE_PDF_PREVIEW = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" style="background:%23ffffff; font-family:sans-serif;"><rect width="600" height="800" fill="%23f8fafc"/><rect x="40" y="40" width="520" height="720" rx="12" fill="white" stroke="%23cbd5e1" stroke-width="2"/><text x="70" y="100" font-size="24" font-weight="bold" fill="%231e293b">Project Final Report</text><text x="70" y="130" font-size="14" fill="%2364748b">Anna University - Department of Computer Science</text><line x1="70" y1="150" x2="530" y2="150" stroke="%23e2e8f0" stroke-width="2"/><rect x="70" y="180" width="460" height="12" rx="4" fill="%23cbd5e1"/><rect x="70" y="205" width="420" height="12" rx="4" fill="%23e2e8f0"/><rect x="70" y="230" width="440" height="12" rx="4" fill="%23e2e8f0"/><rect x="70" y="255" width="380" height="12" rx="4" fill="%23e2e8f0"/><rect x="70" y="300" width="220" height="140" rx="8" fill="%23eff6ff" stroke="%233b82f6" stroke-dasharray="4"/><text x="110" y="375" font-size="14" fill="%232563eb">Figure 1. Diagram</text><rect x="310" y="300" width="220" height="140" rx="8" fill="%23f0fdf4" stroke="%2322c55e" stroke-dasharray="4"/><text x="350" y="375" font-size="14" fill="%2316a34a">Table 1. Results</text></svg>`;
+
+const SAMPLE_SCREENSHOT_1 = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600" style="background:%230f172a; font-family:sans-serif;"><rect width="400" height="600" fill="%230f172a"/><rect x="20" y="20" width="360" height="560" rx="20" fill="%231e293b" stroke="%23334155" stroke-width="2"/><circle cx="200" cy="90" r="35" fill="%2310b981"/><text x="200" y="100" font-size="36" text-anchor="middle" fill="white">✓</text><text x="200" y="155" font-size="18" font-weight="bold" text-anchor="middle" fill="white">Payment Successful</text><text x="200" y="180" font-size="13" text-anchor="middle" fill="%2394a3b8">Paid to TEAM 7 SYSTEM SOLUTION</text><text x="200" y="235" font-size="32" font-weight="800" text-anchor="middle" fill="%2338bdf8">₹225.97</text><rect x="40" y="270" width="320" height="240" rx="12" fill="%230f172a" stroke="%23334155"/><text x="60" y="310" font-size="12" fill="%2394a3b8">UPI Ref / UTR No.</text><text x="60" y="335" font-size="16" font-weight="bold" fill="%23f8fafc" font-family="monospace">329817264512</text><text x="60" y="380" font-size="12" fill="%2394a3b8">From Google Pay UPI</text><text x="60" y="405" font-size="15" font-weight="bold" fill="%23f8fafc">Rajesh Kumar</text><text x="60" y="450" font-size="12" fill="%2394a3b8">Merchant UPI ID</text><text x="60" y="475" font-size="14" fill="%2338bdf8">9789123456@upi</text></svg>`;
+
+const SAMPLE_SCREENSHOT_2 = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600" style="background:%230f172a; font-family:sans-serif;"><rect width="400" height="600" fill="%230f172a"/><rect x="20" y="20" width="360" height="560" rx="20" fill="%231e293b" stroke="%23334155" stroke-width="2"/><circle cx="200" cy="90" r="35" fill="%233b82f6"/><text x="200" y="100" font-size="36" text-anchor="middle" fill="white">✓</text><text x="200" y="155" font-size="18" font-weight="bold" text-anchor="middle" fill="white">PhonePe Transfer Done</text><text x="200" y="180" font-size="13" text-anchor="middle" fill="%2394a3b8">Paid to TEAM 7 SYSTEM SOLUTION</text><text x="200" y="235" font-size="32" font-weight="800" text-anchor="middle" fill="%2338bdf8">₹395.30</text><rect x="40" y="270" width="320" height="240" rx="12" fill="%230f172a" stroke="%23334155"/><text x="60" y="310" font-size="12" fill="%2394a3b8">UPI Ref / UTR No.</text><text x="60" y="335" font-size="16" font-weight="bold" fill="%23f8fafc" font-family="monospace">482910394812</text><text x="60" y="380" font-size="12" fill="%2394a3b8">From PhonePe UPI</text><text x="60" y="405" font-size="15" font-weight="bold" fill="%23f8fafc">Priya Sundaram</text><text x="60" y="450" font-size="12" fill="%2394a3b8">Merchant UPI ID</text><text x="60" y="475" font-size="14" fill="%2338bdf8">9789123456@upi</text></svg>`;
+
 export const INITIAL_ORDERS = [
   {
     id: "ORD-2026-1001",
@@ -119,7 +132,8 @@ export const INITIAL_ORDERS = [
     customerEmail: "rajesh.k@example.com",
     customerAddress: "12, MG Road, Anna Nagar, Chennai",
     files: [
-      { name: "Project_Final_Report.pdf", size: "4.2 MB", pages: 45 }
+      { name: "Project_Final_Report.pdf", size: "4.2 MB", pages: 45, url: SAMPLE_PDF_PREVIEW, options: { paperSize: "A4", paperQuality: "80 GSM", colorMode: "Black & White", printSide: "Double", copies: 2, binding: "Spiral" } },
+      { name: "Executive_Summary_Appendix.pdf", size: "1.8 MB", pages: 12, url: SAMPLE_PDF_PREVIEW, options: { paperSize: "A4", paperQuality: "70 GSM", colorMode: "Color", printSide: "Single", copies: 2, binding: "None" } }
     ],
     options: {
       paperSize: "A4",
@@ -137,7 +151,9 @@ export const INITIAL_ORDERS = [
       colorCost: 0,
       bindingCost: 70.00,
       laminationCost: 0,
-      subtotal: 191.50,
+      deliveryFee: 30.00,
+      deliveryZone: "Zone 1 (Anna Nagar / Nearby)",
+      subtotal: 221.50,
       gst: 34.47,
       discount: 0,
       total: 225.97
@@ -146,7 +162,7 @@ export const INITIAL_ORDERS = [
       method: "UPI QR",
       utr: "329817264512",
       payerName: "Rajesh Kumar",
-      screenshotUrl: "https://via.placeholder.com/300x500?text=Payment+Screenshot",
+      screenshotUrl: SAMPLE_SCREENSHOT_1,
       status: "Verified"
     },
     status: "Printing",
@@ -160,7 +176,9 @@ export const INITIAL_ORDERS = [
     customerEmail: "priya.s@example.com",
     customerAddress: "Flat 4B, Lotus Apartments, Velachery, Chennai",
     files: [
-      { name: "Design_Portfolio.pdf", size: "12.8 MB", pages: 20 }
+      { name: "Design_Portfolio.pdf", size: "12.8 MB", pages: 20, url: SAMPLE_PDF_PREVIEW, options: { paperSize: "A4", paperQuality: "Glossy", colorMode: "Color", printSide: "Single", copies: 1, binding: "Hard" } },
+      { name: "Client_Testimonials.pdf", size: "2.4 MB", pages: 8, url: SAMPLE_PDF_PREVIEW, options: { paperSize: "A4", paperQuality: "80 GSM", colorMode: "Black & White", printSide: "Single", copies: 1, binding: "None" } },
+      { name: "Certifications_Certificate.pdf", size: "1.1 MB", pages: 5, url: SAMPLE_PDF_PREVIEW, options: { paperSize: "A4", paperQuality: "Matt", colorMode: "Color", printSide: "Single", copies: 1, binding: "None" } }
     ],
     options: {
       paperSize: "A4",
@@ -178,7 +196,9 @@ export const INITIAL_ORDERS = [
       colorCost: 120.00,
       bindingCost: 140.00,
       laminationCost: 0,
-      subtotal: 335.00,
+      deliveryFee: 50.00,
+      deliveryZone: "Zone 2 (Velachery / Central)",
+      subtotal: 385.00,
       gst: 60.30,
       discount: 0,
       total: 395.30
@@ -187,7 +207,7 @@ export const INITIAL_ORDERS = [
       method: "UPI QR",
       utr: "482910394812",
       payerName: "Priya S",
-      screenshotUrl: "https://via.placeholder.com/300x500?text=UPI+Receipt",
+      screenshotUrl: SAMPLE_SCREENSHOT_2,
       status: "Waiting Verification"
     },
     status: "Waiting Verification",

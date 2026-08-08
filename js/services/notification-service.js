@@ -39,3 +39,8 @@ export const NotificationService = {
     }, duration);
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.NotificationService = NotificationService;
+}
+

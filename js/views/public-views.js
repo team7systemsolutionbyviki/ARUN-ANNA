@@ -3,6 +3,7 @@
    ========================================================================== */
 
 import { DEFAULT_SERVICES, FAQS } from '../config/default-data.js';
+import { AuthService } from '../services/auth-service.js';
 import { DBService } from '../services/db-service.js';
 import { PricingEngine } from '../services/pricing-engine.js';
 import { StorageService } from '../services/storage-service.js';
@@ -97,7 +98,7 @@ export const PublicViews = {
       </section>
 
       <!-- Services Section -->
-      <section style="padding: 4rem 0; background-color: var(--bg-card); border-top: 1px solid var(--border-color);">
+      <section id="services-section" style="padding: 4rem 0; background-color: var(--bg-card); border-top: 1px solid var(--border-color);">
         <div class="container">
           <div class="text-center mb-4">
             <h2 style="font-size: 2.25rem;">Our Printing Services</h2>
@@ -105,9 +106,15 @@ export const PublicViews = {
           </div>
 
           <div class="services-grid">
-            ${DEFAULT_SERVICES.map(s => `
+            ${(await (async () => {
+              try {
+                const cat = await DBService.getServicesCatalog();
+                const active = (cat || []).filter(s => s.status !== 'Inactive');
+                return active.length > 0 ? active : DEFAULT_SERVICES;
+              } catch(e) { return DEFAULT_SERVICES; }
+            })()).map(s => `
               <div class="service-card">
-                <div class="service-icon">${s.icon}</div>
+                <div class="service-icon">${s.icon || '📄'}</div>
                 <h3 style="margin-bottom: 0.5rem;">${s.title}</h3>
                 <p class="text-muted" style="font-size: 0.9rem; flex:1;">${s.description}</p>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border-color);">
@@ -121,7 +128,7 @@ export const PublicViews = {
       </section>
 
       <!-- How It Works Section -->
-      <section style="padding: 4rem 0;">
+      <section id="how-it-works-section" style="padding: 4rem 0;">
         <div class="container">
           <div class="text-center mb-4">
             <h2 style="font-size: 2.25rem;">How Ordering Works</h2>
@@ -212,6 +219,10 @@ export const PublicViews = {
 
   // --- SERVICES PAGE ---
   async renderServices() {
+    const catalog = await DBService.getServicesCatalog();
+    const activeServices = catalog.filter(s => s.status !== 'Inactive');
+    const isAdmin = AuthService.isAdmin();
+
     const app = document.getElementById('app-content');
     app.innerHTML = `
       <section style="padding: 4rem 0;">
@@ -222,10 +233,10 @@ export const PublicViews = {
           </div>
 
           <div class="services-grid" style="margin-top:3rem;">
-            ${DEFAULT_SERVICES.map(s => `
+            ${activeServices.map(s => `
               <div class="service-card" style="position:relative;">
                 ${s.popular ? `<span class="badge badge-approved" style="position:absolute; top:1rem; right:1rem; font-size:0.7rem;">Popular</span>` : ''}
-                <div class="service-icon">${s.icon}</div>
+                <div class="service-icon">${s.icon || '📄'}</div>
                 <h3 style="margin-bottom: 0.5rem; font-size:1.35rem;">${s.title}</h3>
                 <p class="text-muted" style="font-size: 0.925rem; flex:1; margin-bottom:1.5rem;">${s.description}</p>
                 <div style="display:flex; justify-content:space-between; align-items:center; padding-top:1.25rem; border-top:1px solid var(--border-color);">
@@ -414,8 +425,17 @@ export const PublicViews = {
                 </div>
 
                 <div class="form-group">
+                  <label class="form-label">Delivery Zone / Area Selection *</label>
+                  <select class="form-select" id="cust-delivery-zone" style="font-weight:600; color:var(--primary);">
+                    ${Object.entries(pricing.deliveryZones || {}).map(([key, item]) => `
+                      <option value="${key}">${item.label}</option>
+                    `).join('')}
+                  </select>
+                </div>
+
+                <div class="form-group">
                   <label class="form-label">Delivery Address (Optional for Pickup)</label>
-                  <textarea class="form-control" id="cust-address" placeholder="Enter full address if requesting door delivery"></textarea>
+                  <textarea class="form-control" id="cust-address" placeholder="Enter full address if requesting doorstep delivery"></textarea>
                 </div>
 
                 <div class="flex justify-between mt-4">
@@ -491,6 +511,10 @@ export const PublicViews = {
                 <span id="label-print-cost">Printing:</span>
                 <span id="price-paper">₹0.00</span>
               </div>
+              <div class="price-row" id="row-color" style="display:none;">
+                <span>Color Printing Extra:</span>
+                <span id="price-color">₹0.00</span>
+              </div>
               <div class="price-row" id="row-binding" style="display:none;">
                 <span>Binding Cost:</span>
                 <span id="price-binding">₹0.00</span>
@@ -498,6 +522,10 @@ export const PublicViews = {
               <div class="price-row" id="row-lamination" style="display:none;">
                 <span>Lamination:</span>
                 <span id="price-lamination">₹0.00</span>
+              </div>
+              <div class="price-row" id="row-delivery" style="display:none;">
+                <span>Delivery Charge:</span>
+                <span id="price-delivery">₹0.00</span>
               </div>
 
               <div class="price-row total-row">
@@ -512,6 +540,8 @@ export const PublicViews = {
 
     // --- Interactive Wizard Controller Logic ---
     const updateCalculations = () => {
+      const selectedZoneKey = document.getElementById('cust-delivery-zone')?.value || 'Pickup';
+
       // Aggregate pricing across all files using per-file options
       let totalPaper = 0, totalColor = 0, totalBinding = 0, totalLamination = 0;
       state.files.forEach(f => {
@@ -521,26 +551,42 @@ export const PublicViews = {
         totalBinding += q.bindingCost;
         totalLamination += q.laminationCost;
       });
-      const subtotal = totalPaper + totalColor + totalBinding + totalLamination;
-      const total = subtotal;
-      const quote = { paperCost: totalPaper, colorCost: totalColor, bindingCost: totalBinding, laminationCost: totalLamination, gst: 0, total };
 
-      document.getElementById('price-paper').innerText = formatCurrency(totalPaper);
+      const deliveryZones = pricing.deliveryZones || {};
+      const deliveryFee = Number((deliveryZones[selectedZoneKey]?.fee || 0).toFixed(2));
+
+      const subtotal = totalPaper + totalColor + totalBinding + totalLamination + deliveryFee;
+      const total = subtotal;
+      const quote = { paperCost: totalPaper, colorCost: totalColor, bindingCost: totalBinding, laminationCost: totalLamination, deliveryFee, deliveryZone: selectedZoneKey, gst: 0, total };
+
+      const paperEl = document.getElementById('price-paper');
+      if (paperEl) paperEl.innerText = formatCurrency(totalPaper);
 
       const colorRow = document.getElementById('row-color');
       if (colorRow) colorRow.style.display = totalColor > 0 ? '' : 'none';
-      document.getElementById('price-color').innerText = formatCurrency(totalColor);
+      const colorEl = document.getElementById('price-color');
+      if (colorEl) colorEl.innerText = formatCurrency(totalColor);
 
       const bindingRow = document.getElementById('row-binding');
       if (bindingRow) bindingRow.style.display = totalBinding > 0 ? '' : 'none';
-      document.getElementById('price-binding').innerText = formatCurrency(totalBinding);
+      const bindingEl = document.getElementById('price-binding');
+      if (bindingEl) bindingEl.innerText = formatCurrency(totalBinding);
 
       const laminationRow = document.getElementById('row-lamination');
       if (laminationRow) laminationRow.style.display = totalLamination > 0 ? '' : 'none';
-      document.getElementById('price-lamination').innerText = formatCurrency(totalLamination);
+      const laminationEl = document.getElementById('price-lamination');
+      if (laminationEl) laminationEl.innerText = formatCurrency(totalLamination);
 
-      document.getElementById('price-grand-total').innerText = formatCurrency(total);
-      document.getElementById('qr-payable-amount').innerText = formatCurrency(total);
+      const deliveryRow = document.getElementById('row-delivery');
+      if (deliveryRow) deliveryRow.style.display = deliveryFee > 0 ? '' : 'none';
+      const deliveryEl = document.getElementById('price-delivery');
+      if (deliveryEl) deliveryEl.innerText = formatCurrency(deliveryFee);
+
+      const grandTotalEl = document.getElementById('price-grand-total');
+      if (grandTotalEl) grandTotalEl.innerText = formatCurrency(total);
+
+      const qrPayableEl = document.getElementById('qr-payable-amount');
+      if (qrPayableEl) qrPayableEl.innerText = formatCurrency(total);
 
       const fileCountText = document.getElementById('summary-file-count');
       if (fileCountText) {
@@ -551,6 +597,11 @@ export const PublicViews = {
       }
       return quote;
     };
+
+    const deliverySelect = document.getElementById('cust-delivery-zone');
+    if (deliverySelect) {
+      deliverySelect.onchange = () => updateCalculations();
+    }
 
     const setStep = (stepNum) => {
       [1, 2, 3].forEach(n => {
@@ -756,80 +807,160 @@ export const PublicViews = {
     };
 
     // Step Navigation Event Handlers
-    document.getElementById('btn-to-step-2').onclick = () => {
-      if (state.files.length === 0) {
-        NotificationService.showToast('Please upload at least one PDF document before continuing.', 'warning');
-        return;
-      }
-      updateCalculations();
-      setStep(2);
-    };
+    const btnToStep2 = document.getElementById('btn-to-step-2');
+    if (btnToStep2) {
+      btnToStep2.onclick = () => {
+        if (state.files.length === 0) {
+          NotificationService.showToast('Please upload at least one PDF document before continuing to Contact Details.', 'warning');
+          return;
+        }
+        updateCalculations();
+        setStep(2);
+      };
+    }
 
-    document.getElementById('btn-back-to-step-1').onclick = () => setStep(1);
+    const btnBackToStep1 = document.getElementById('btn-back-to-step-1');
+    if (btnBackToStep1) btnBackToStep1.onclick = () => setStep(1);
 
-    document.getElementById('btn-to-step-3').onclick = () => {
-      const name = document.getElementById('cust-name').value.trim();
-      const phone = document.getElementById('cust-phone').value.trim();
+    const btnToStep3 = document.getElementById('btn-to-step-3');
+    if (btnToStep3) {
+      btnToStep3.onclick = () => {
+        const name = document.getElementById('cust-name')?.value.trim() || '';
+        const phone = document.getElementById('cust-phone')?.value.trim() || '';
 
-      if (!name || !phone) {
-        NotificationService.showToast('Please enter your Name and Mobile Phone Number.', 'warning');
-        return;
-      }
+        if (!name || !phone) {
+          NotificationService.showToast('Please enter your Name and Mobile Phone Number.', 'warning');
+          return;
+        }
 
-      state.customer.name = name;
-      state.customer.phone = phone;
-      state.customer.email = document.getElementById('cust-email').value.trim();
-      state.customer.address = document.getElementById('cust-address').value.trim();
-      setStep(3);
-    };
+        state.customer.name = name;
+        state.customer.phone = phone;
+        state.customer.email = document.getElementById('cust-email')?.value.trim() || '';
+        state.customer.address = document.getElementById('cust-address')?.value.trim() || '';
+        updateCalculations();
+        setStep(3);
+      };
+    }
 
-    document.getElementById('btn-back-to-step-2').onclick = () => setStep(2);
+    const btnBackToStep2 = document.getElementById('btn-back-to-step-2');
+    if (btnBackToStep2) btnBackToStep2.onclick = () => setStep(2);
+
+    // Clickable Wizard Tab Header Tabs
+    const tab1 = document.getElementById('tab-1');
+    const tab2 = document.getElementById('tab-2');
+    const tab3 = document.getElementById('tab-3');
+    if (tab1) tab1.onclick = () => setStep(1);
+    if (tab2) {
+      tab2.onclick = () => {
+        if (state.files.length === 0) {
+          NotificationService.showToast('Please upload at least one PDF document before continuing.', 'warning');
+          return;
+        }
+        updateCalculations();
+        setStep(2);
+      };
+    }
+    if (tab3) {
+      tab3.onclick = () => {
+        if (state.files.length === 0) {
+          NotificationService.showToast('Please upload at least one PDF document before continuing.', 'warning');
+          return;
+        }
+        const name = document.getElementById('cust-name')?.value.trim() || '';
+        const phone = document.getElementById('cust-phone')?.value.trim() || '';
+        if (!name || !phone) {
+          NotificationService.showToast('Please enter your Name and Mobile Phone Number.', 'warning');
+          setStep(2);
+          return;
+        }
+        updateCalculations();
+        setStep(3);
+      };
+    }
 
     // Per-file options update via global helpers (already handled inline via window.updateFileOption)
 
     // Submit Order
-    document.getElementById('btn-submit-final-order').onclick = async () => {
-      const utr = document.getElementById('pay-utr').value.trim();
-      const payerName = document.getElementById('pay-name').value.trim();
-      const screenshotInput = document.getElementById('pay-screenshot');
+    const btnSubmit = document.getElementById('btn-submit-final-order');
+    if (btnSubmit) {
+      btnSubmit.onclick = async () => {
+        const utr = document.getElementById('pay-utr')?.value.trim() || '';
+        const payerName = document.getElementById('pay-name')?.value.trim() || '';
+        const screenshotInput = document.getElementById('pay-screenshot');
 
-      if (!utr || utr.length < 6) {
-        NotificationService.showToast('Please enter a valid 12-digit UTR/Ref Number.', 'warning');
-        return;
-      }
-      if (!payerName) {
-        NotificationService.showToast('Please enter the Payer / UPI Account Name.', 'warning');
-        return;
-      }
+        const custName = state.customer.name || document.getElementById('cust-name')?.value.trim() || '';
+        const custPhone = state.customer.phone || document.getElementById('cust-phone')?.value.trim() || '';
+        const custEmail = state.customer.email || document.getElementById('cust-email')?.value.trim() || '';
+        const custAddress = state.customer.address || document.getElementById('cust-address')?.value.trim() || '';
 
-      let screenshotUrl = '';
-      if (screenshotInput.files && screenshotInput.files[0]) {
-        const uploaded = await StorageService.uploadFile(screenshotInput.files[0], 'receipts');
-        screenshotUrl = uploaded.url;
-      }
-
-      const quote = updateCalculations();
-
-      const newOrder = await DBService.createOrder({
-        customerName: state.customer.name,
-        customerPhone: state.customer.phone,
-        customerEmail: state.customer.email,
-        customerAddress: state.customer.address,
-        files: state.files.map(f => ({ name: f.name, size: f.size, url: f.url, pages: f.pages, options: f.options })),
-        options: state.files.length > 0 ? state.files[0].options : {},
-        pricing: quote,
-        payment: {
-          method: 'UPI QR',
-          utr: utr,
-          payerName: payerName,
-          screenshotUrl: screenshotUrl,
-          status: 'Waiting Verification'
+        if (state.files.length === 0) {
+          NotificationService.showToast('Please upload at least one PDF document before submitting.', 'warning');
+          setStep(1);
+          return;
         }
-      });
 
-      NotificationService.showToast(`Order ${newOrder.id} submitted successfully!`, 'success');
-      window.location.hash = `#track?id=${newOrder.id}`;
-    };
+        if (!custName || !custPhone) {
+          NotificationService.showToast('Please enter your Customer Name and Phone Number in Step 2.', 'warning');
+          setStep(2);
+          return;
+        }
+
+        if (!utr || utr.length < 6) {
+          NotificationService.showToast('Please enter a valid 12-digit UTR / UPI Ref Number.', 'warning');
+          document.getElementById('pay-utr')?.focus();
+          return;
+        }
+
+        if (!payerName) {
+          NotificationService.showToast('Please enter the Payer / UPI Account Name.', 'warning');
+          document.getElementById('pay-name')?.focus();
+          return;
+        }
+
+        const originalText = btnSubmit.innerHTML;
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '⏳ Submitting Order & Payment...';
+
+        try {
+          let screenshotUrl = '';
+          if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
+            try {
+              const uploaded = await StorageService.uploadFile(screenshotInput.files[0], 'receipts');
+              screenshotUrl = uploaded.url || '';
+            } catch (err) {
+              console.warn('Screenshot processing failed, proceeding without screenshot:', err);
+            }
+          }
+
+          const quote = updateCalculations();
+
+          const newOrder = await DBService.createOrder({
+            customerName: custName,
+            customerPhone: custPhone,
+            customerEmail: custEmail,
+            customerAddress: custAddress,
+            files: state.files.map(f => ({ name: f.name, size: f.size, url: f.url, pages: f.pages, options: f.options })),
+            options: state.files.length > 0 ? state.files[0].options : {},
+            pricing: quote,
+            payment: {
+              method: 'UPI QR',
+              utr: utr,
+              payerName: payerName,
+              screenshotUrl: screenshotUrl,
+              status: 'Waiting Verification'
+            }
+          });
+
+          NotificationService.showToast(`Order ${newOrder.id} submitted successfully!`, 'success');
+          window.location.hash = `#track?id=${newOrder.id}`;
+        } catch (err) {
+          console.error('Order creation error:', err);
+          NotificationService.showToast('Failed to submit order. Please try again.', 'error');
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = originalText;
+        }
+      };
+    }
 
     updateCalculations();
   },

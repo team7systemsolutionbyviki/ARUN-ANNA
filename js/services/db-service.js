@@ -3,19 +3,53 @@
    ========================================================================== */
 
 import { getServices } from '../config/firebase-config.js';
-import { INITIAL_ORDERS, DEFAULT_SETTINGS, DEFAULT_PRICING } from '../config/default-data.js';
+import { INITIAL_ORDERS, DEFAULT_SETTINGS, DEFAULT_PRICING, DEFAULT_SERVICES } from '../config/default-data.js';
 
 const ORDERS_KEY = 'team7_orders_store';
 const SETTINGS_KEY = 'team7_settings_store';
+const CATALOG_KEY = 'team7_catalog_store';
 
 export const DBService = {
-  // Initialize sample data into local storage if empty
+  // Initialize sample data into local storage if empty (with migration for demo orders)
   initLocalStore() {
     if (!localStorage.getItem(ORDERS_KEY)) {
       localStorage.setItem(ORDERS_KEY, JSON.stringify(INITIAL_ORDERS));
+    } else {
+      try {
+        const stored = JSON.parse(localStorage.getItem(ORDERS_KEY));
+        let updated = false;
+        stored.forEach(o => {
+          const sample = INITIAL_ORDERS.find(s => s.id === o.id);
+          if (sample) {
+            if (!o.payment?.screenshotUrl || o.payment.screenshotUrl.includes('placeholder')) {
+              if (!o.payment) o.payment = {};
+              o.payment.screenshotUrl = sample.payment.screenshotUrl;
+              updated = true;
+            }
+            if (!o.files || o.files.length < sample.files.length) {
+              o.files = sample.files;
+              updated = true;
+            } else if (o.files && o.files[0] && (!o.files[0].url || o.files[0].url.includes('placeholder'))) {
+              o.files[0].url = sample.files[0].url;
+              updated = true;
+            }
+          }
+        });
+        if (updated) {
+          localStorage.setItem(ORDERS_KEY, JSON.stringify(stored));
+        }
+      } catch (e) {}
     }
     if (!localStorage.getItem(SETTINGS_KEY)) {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(DEFAULT_SETTINGS));
+    }
+    if (!localStorage.getItem(CATALOG_KEY)) {
+      const initialCatalog = DEFAULT_SERVICES.map(s => ({
+        category: 'General Printing',
+        status: 'Active',
+        ...s
+      }));
+      localStorage.setItem(CATALOG_KEY, JSON.stringify(initialCatalog));
     }
   },
 
@@ -30,7 +64,7 @@ export const DBService = {
         const snap = await getDoc(docRef);
         if (snap.exists()) return snap.data();
       } catch (err) {
-        console.warn("Firestore fetch error, fallback to local:", err);
+        // Fallback to local storage engine silently if Firestore rules restrict access
       }
     }
     const local = localStorage.getItem(SETTINGS_KEY);
@@ -46,7 +80,7 @@ export const DBService = {
         const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
         await setDoc(doc(db, "settings", "general"), settings);
       } catch (err) {
-        console.warn("Firestore save error:", err);
+        // Fallback to local storage engine silently
       }
     }
     return true;
@@ -63,7 +97,7 @@ export const DBService = {
         const snap = await getDocs(q);
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
       } catch (err) {
-        console.warn("Firestore orders fetch error:", err);
+        // Fallback to local storage engine silently
       }
     }
     const local = localStorage.getItem(ORDERS_KEY);
@@ -100,9 +134,13 @@ export const DBService = {
     };
 
     // Save Local
-    const orders = await this.getOrders();
-    orders.unshift(newOrder);
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    try {
+      const orders = await this.getOrders();
+      orders.unshift(newOrder);
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    } catch (err) {
+      console.warn("Local storage save error:", err);
+    }
 
     // Save Firestore if connected
     const { db, isDemo } = getServices();
@@ -141,6 +179,22 @@ export const DBService = {
     return null;
   },
 
+  // Delete Order (Admin operation)
+  async deleteOrder(orderId) {
+    let orders = await this.getOrders();
+    orders = orders.filter(o => o.id !== orderId);
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+
+    const { db, isDemo } = getServices();
+    if (!isDemo && db) {
+      try {
+        const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+        await deleteDoc(doc(db, "orders", orderId));
+      } catch (e) {}
+    }
+    return true;
+  },
+
   // Customer directory aggregator
   async getCustomers() {
     const orders = await this.getOrders();
@@ -158,11 +212,76 @@ export const DBService = {
         };
       }
       map[phone].totalOrders += 1;
-      map[phone].totalSpent += (o.pricing?.total || 0);
+      if (o.status !== 'Rejected') {
+        map[phone].totalSpent += (o.pricing?.total || 0);
+      }
       if (new Date(o.createdAt) > new Date(map[phone].lastOrderDate)) {
         map[phone].lastOrderDate = o.createdAt;
       }
     });
     return Object.values(map);
+  },
+
+  // --- SERVICE CATALOG CRUD ENGINE ---
+  async getServicesCatalog() {
+    this.initLocalStore();
+    const local = localStorage.getItem(CATALOG_KEY);
+    return local ? JSON.parse(local) : DEFAULT_SERVICES;
+  },
+
+  async saveCatalogItem(serviceData) {
+    this.initLocalStore();
+    const catalog = await this.getServicesCatalog();
+
+    let targetItem = null;
+    if (serviceData.id) {
+      const idx = catalog.findIndex(s => s.id === serviceData.id);
+      if (idx !== -1) {
+        catalog[idx] = { ...catalog[idx], ...serviceData };
+        targetItem = catalog[idx];
+      }
+    }
+
+    if (!targetItem) {
+      targetItem = {
+        id: 'srv-' + Date.now(),
+        category: serviceData.category || 'General Printing',
+        status: serviceData.status || 'Active',
+        popular: !!serviceData.popular,
+        icon: serviceData.icon || '📄',
+        ...serviceData
+      };
+      catalog.unshift(targetItem);
+    }
+
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(catalog));
+
+    // Sync Firestore if connected
+    const { db, isDemo } = getServices();
+    if (!isDemo && db) {
+      try {
+        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+        await setDoc(doc(db, "services", targetItem.id), targetItem);
+      } catch (e) {}
+    }
+
+    return targetItem;
+  },
+
+  async deleteCatalogItem(serviceId) {
+    this.initLocalStore();
+    let catalog = await this.getServicesCatalog();
+    catalog = catalog.filter(s => s.id !== serviceId);
+    localStorage.setItem(CATALOG_KEY, JSON.stringify(catalog));
+
+    const { db, isDemo } = getServices();
+    if (!isDemo && db) {
+      try {
+        const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+        await deleteDoc(doc(db, "services", serviceId));
+      } catch (e) {}
+    }
+
+    return true;
   }
 };

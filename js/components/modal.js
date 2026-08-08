@@ -14,7 +14,7 @@ export const ModalComponent = {
       <div class="modal-content" style="max-width: ${width};">
         <div class="modal-header">
           <h3>${title}</h3>
-          <button style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--text-muted);" onclick="window.ModalComponent.close()">✕</button>
+          <button style="background:none; border:none; font-size:1.4rem; cursor:pointer; color:var(--text-muted);" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">✕</button>
         </div>
         <div class="modal-body">
           ${bodyHTML}
@@ -47,10 +47,13 @@ export const ModalComponent = {
           <img src="${imageUrl}" alt="Preview" style="max-width:100%; max-height:70vh; border-radius:8px; border:1px solid var(--border-color);" />
         </div>
       `,
-      footerHTML: `<button class="btn btn-secondary" onclick="window.ModalComponent.close()">Close</button>`,
+      footerHTML: `<button class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">Close</button>`,
       width: "700px"
     });
   }
 };
 
-window.ModalComponent = ModalComponent;
+if (typeof window !== 'undefined') {
+  window.ModalComponent = ModalComponent;
+}
+

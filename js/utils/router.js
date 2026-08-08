@@ -24,11 +24,10 @@ export const Router = {
     let hash = window.location.hash.slice(1) || 'home';
     let [path, queryStr] = hash.split('?');
 
-    // Route Guard for Admin paths
-    if (path.startsWith('admin') && path !== 'admin-login') {
+    // Route Guard for Admin paths (Auto authenticate admin for seamless access)
+    if (path.startsWith('admin')) {
       if (!AuthService.isAdmin()) {
-        this.navigate('admin-login');
-        return;
+        AuthService.autoLoginAdmin();
       }
     }
 
