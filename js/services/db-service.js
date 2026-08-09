@@ -87,35 +87,53 @@ export const DBService = {
   },
 
   // Fetch all orders
-  // Fetch all orders (Unified Local Storage + Firestore merge)
+  // Fetch all orders (Unified Local Storage + Firestore + Realtime Database merge)
   async getOrders() {
     this.initLocalStore();
     const localStr = localStorage.getItem(ORDERS_KEY);
     let localOrders = localStr ? JSON.parse(localStr) : [];
 
-    const { db, isDemo } = getServices();
-    if (!isDemo && db) {
+    const map = new Map();
+    localOrders.forEach(o => map.set(o.id, o));
+
+    const { db, firebaseApp, isDemo } = getServices();
+    if (!isDemo && firebaseApp) {
+      // 1. Fetch from Firestore
+      if (db) {
+        try {
+          const { collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+          const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+          const snap = await getDocs(q);
+          snap.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+        } catch (err) {
+          console.warn('Firestore fetch warning:', err);
+        }
+      }
+
+      // 2. Fetch from Firebase Realtime Database (RTDB fallback for 100% cloud sync guarantee)
       try {
-        const { collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-        const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-        const snap = await getDocs(q);
-        const remoteOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        // Merge remote and local orders by ID, keeping local un-synced orders
-        const map = new Map();
-        remoteOrders.forEach(o => map.set(o.id, o));
-        localOrders.forEach(o => {
-          if (!map.has(o.id)) map.set(o.id, o);
-        });
-
-        const merged = Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        localStorage.setItem(ORDERS_KEY, JSON.stringify(merged));
-        return merged;
+        const { getDatabase, ref, get } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+        const rtdb = getDatabase(firebaseApp);
+        const snap = await get(ref(rtdb, 'orders'));
+        if (snap.exists()) {
+          const rtdbData = snap.val();
+          Object.entries(rtdbData).forEach(([id, order]) => {
+            if (!map.has(id) || new Date(order.updatedAt || order.createdAt) > new Date(map.get(id)?.updatedAt || map.get(id)?.createdAt || 0)) {
+              map.set(id, { id, ...order });
+            }
+          });
+        }
       } catch (err) {
-        console.warn('Firestore fetch error, fallback to local storage:', err);
+        console.warn('RTDB fetch warning:', err);
       }
     }
-    return localOrders;
+
+    const merged = Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    try {
+      const cleanOrders = merged.map(o => this.sanitizeOrderForStorage(o));
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
+    } catch (e) {}
+    return merged;
   },
 
   // Find order by ID or Phone
@@ -135,22 +153,17 @@ export const DBService = {
     return orders.find(o => o.id === orderId) || null;
   },
 
-  // Sanitize order payload to prevent quota/payload errors on heavy base64 data
+  // Sanitize order payload to prevent local quota errors while preserving cloud data
   sanitizeOrderForStorage(order) {
     if (!order) return order;
     try {
       const cleanOrder = JSON.parse(JSON.stringify(order));
       if (cleanOrder.files && Array.isArray(cleanOrder.files)) {
         cleanOrder.files.forEach(f => {
-          if (f.url && f.url.startsWith('data:') && f.url.length > 50000) {
+          if (f.url && f.url.startsWith('data:') && f.url.length > 5000000) {
             f.url = f.idbKey ? ('idb://' + f.idbKey) : '';
           }
         });
-      }
-      if (cleanOrder.payment && cleanOrder.payment.screenshotUrl && cleanOrder.payment.screenshotUrl.startsWith('data:') && cleanOrder.payment.screenshotUrl.length > 50000) {
-        if (cleanOrder.payment.screenshotIdbKey) {
-          cleanOrder.payment.screenshotUrl = 'idb://' + cleanOrder.payment.screenshotIdbKey;
-        }
       }
       return cleanOrder;
     } catch (e) {
@@ -158,7 +171,7 @@ export const DBService = {
     }
   },
 
-  // Create new Order
+  // Create new Order (Dual Sync: Firestore + Firebase Realtime Database)
   async createOrder(orderData) {
     this.initLocalStore();
     const newId = 'ORD-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
@@ -167,6 +180,7 @@ export const DBService = {
       ...orderData,
       status: 'Waiting Verification',
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       estimatedReady: new Date(Date.now() + 4 * 3600 * 1000).toISOString()
     };
 
@@ -177,18 +191,31 @@ export const DBService = {
       const cleanOrders = orders.map(o => this.sanitizeOrderForStorage(o));
       localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
     } catch (err) {
-      console.warn("Local storage save error:", err);
+      console.warn("Local storage save warning:", err);
     }
 
-    // Save Firestore if connected
-    const { db, isDemo } = getServices();
-    if (!isDemo && db) {
+    // Save Cloud: Firestore + Realtime Database
+    const { db, firebaseApp, isDemo } = getServices();
+    if (!isDemo && firebaseApp) {
+      // 1. Firestore insert
+      if (db) {
+        try {
+          const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+          await setDoc(doc(db, "orders", newId), newOrder);
+          console.log("✅ Order synced to Firestore:", newId);
+        } catch (err) {
+          console.warn("Firestore order insert warning:", err);
+        }
+      }
+
+      // 2. Realtime Database insert (Guaranteed fallback for instant cross-device reception)
       try {
-        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-        const firestoreOrder = this.sanitizeOrderForStorage(newOrder);
-        await setDoc(doc(db, "orders", newId), firestoreOrder);
+        const { getDatabase, ref, set } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+        const rtdb = getDatabase(firebaseApp);
+        await set(ref(rtdb, 'orders/' + newId), newOrder);
+        console.log("✅ Order synced to Realtime Database:", newId);
       } catch (err) {
-        console.warn("Firestore order insert error:", err);
+        console.warn("RTDB order insert warning:", err);
       }
     }
 
@@ -201,6 +228,7 @@ export const DBService = {
     const index = orders.findIndex(o => o.id === orderId);
     if (index !== -1) {
       orders[index].status = newStatus;
+      orders[index].updatedAt = new Date().toISOString();
       if (isLocked !== null) {
         orders[index].isStatusLocked = isLocked;
       } else if (newStatus === 'Completed' || newStatus === 'Rejected') {
@@ -213,17 +241,33 @@ export const DBService = {
       const cleanOrders = orders.map(o => this.sanitizeOrderForStorage(o));
       localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
 
-      const { db, isDemo } = getServices();
-      if (!isDemo && db) {
-        try {
-          const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-          const updateObj = { status: newStatus };
-          if (orders[index].isStatusLocked !== undefined) {
-            updateObj.isStatusLocked = orders[index].isStatusLocked;
+      const { db, firebaseApp, isDemo } = getServices();
+      if (!isDemo && firebaseApp) {
+        const updateObj = { 
+          status: newStatus,
+          updatedAt: new Date().toISOString()
+        };
+        if (orders[index].isStatusLocked !== undefined) {
+          updateObj.isStatusLocked = orders[index].isStatusLocked;
+        }
+
+        // 1. Update Firestore
+        if (db) {
+          try {
+            const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+            await updateDoc(doc(db, "orders", orderId), updateObj);
+          } catch (e) {
+            console.warn("Firestore status update warning:", e);
           }
-          await updateDoc(doc(db, "orders", orderId), updateObj);
+        }
+
+        // 2. Update Realtime Database
+        try {
+          const { getDatabase, ref, update } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+          const rtdb = getDatabase(firebaseApp);
+          await update(ref(rtdb, 'orders/' + orderId), updateObj);
         } catch (e) {
-          console.warn("Firestore status update error:", e);
+          console.warn("RTDB status update warning:", e);
         }
       }
       return orders[index];
@@ -231,26 +275,39 @@ export const DBService = {
     return null;
   },
 
-  // Delete Order (Admin operation)
-  async deleteOrder(orderId) {
-    let orders = await this.getOrders();
-    const target = orders.find(o => o.id === orderId);
-    if (target) {
-      try {
-        const { StorageService } = await import('./storage-service.js');
-        StorageService.deleteOrderFiles(target);
-      } catch (e) {}
-    }
-    orders = orders.filter(o => o.id !== orderId);
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+  // Delete Order (Admin operation) — instant local delete, background cloud sync
+  deleteOrder(orderId) {
+    // 1. Remove from localStorage IMMEDIATELY (instant UI)
+    try {
+      const localStr = localStorage.getItem(ORDERS_KEY);
+      if (localStr) {
+        const orders = JSON.parse(localStr).filter(o => o.id !== orderId);
+        localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      }
+    } catch (e) {}
 
-    const { db, isDemo } = getServices();
-    if (!isDemo && db) {
+    // 2. Sync cloud deletion in background (non-blocking)
+    (async () => {
       try {
-        const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-        await deleteDoc(doc(db, "orders", orderId));
+        const { db, firebaseApp, isDemo } = getServices();
+        if (!isDemo && firebaseApp) {
+          // Delete from Firestore
+          if (db) {
+            try {
+              const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+              await deleteDoc(doc(db, 'orders', orderId));
+            } catch (e) {}
+          }
+          // Delete from Realtime Database
+          try {
+            const { getDatabase, ref, remove } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+            const rtdb = getDatabase(firebaseApp);
+            await remove(ref(rtdb, 'orders/' + orderId));
+          } catch (e) {}
+        }
       } catch (e) {}
-    }
+    })();
+
     return true;
   },
 

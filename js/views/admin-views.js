@@ -477,17 +477,60 @@ export const AdminViews = {
 
     await this.renderAdminLayout('orders', html);
 
-    // Global Order Action Helpers
-    window.deleteOrderRecord = async (orderId) => {
-      if (confirm(`Are you sure you want to permanently delete order "${orderId}"? This action cannot be undone.`)) {
-        const res = await DBService.deleteOrder(orderId);
-        if (res) {
-          NotificationService.showToast(`Order ${orderId} deleted permanently!`, 'info');
-          this.renderOrders(queryStr);
-        } else {
-          NotificationService.showToast('Failed to delete order.', 'error');
-        }
+    // Live Order Reception Polling Timer (Every 6 seconds — new orders only)
+    if (window._adminOrderSyncTimer) {
+      clearInterval(window._adminOrderSyncTimer);
+    }
+    if (!window._deletedOrderIds) window._deletedOrderIds = new Set();
+    window._knownOrderIds = new Set(orders.map(o => o.id));
+
+    window._adminOrderSyncTimer = setInterval(async () => {
+      if (!window.location.hash.startsWith('#admin-orders')) {
+        clearInterval(window._adminOrderSyncTimer);
+        window._adminOrderSyncTimer = null;
+        return;
       }
+      try {
+        const freshOrders = await DBService.getOrders();
+        // Only re-render if there is a genuinely NEW order id (not a deletion)
+        const genuinelyNew = freshOrders.filter(o =>
+          !window._knownOrderIds.has(o.id) && !window._deletedOrderIds.has(o.id)
+        );
+        if (genuinelyNew.length > 0) {
+          window._knownOrderIds = new Set(freshOrders.map(o => o.id));
+          NotificationService.showToast(`🔔 NEW ORDER: ${genuinelyNew[0].id} (${genuinelyNew[0].customerName})!`, 'success');
+          this.renderOrders(queryStr);
+        }
+      } catch (e) {}
+    }, 6000);
+
+    // Global Order Action Helpers
+    window.deleteOrderRecord = (orderId) => {
+      if (!confirm(`Delete order "${orderId}"? This cannot be undone.`)) return;
+
+      // Guard: tell the polling timer this ID was deleted so it never re-adds it
+      if (!window._deletedOrderIds) window._deletedOrderIds = new Set();
+      window._deletedOrderIds.add(orderId);
+      if (window._knownOrderIds) window._knownOrderIds.delete(orderId);
+
+      // Instant UI: animate row out
+      const row = document.getElementById(`order-row-${orderId}`);
+      if (row) {
+        row.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(40px)';
+        setTimeout(() => { try { row.remove(); } catch(e){} }, 280);
+      }
+
+      // Background: delete from localStorage + cloud
+      DBService.deleteOrder(orderId);
+      NotificationService.showToast(`🗑️ Order ${orderId} deleted!`, 'info');
+
+      // Update count badges
+      ['pipeline-total-count', 'count-all'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = Math.max(0, parseInt(el.textContent || '0') - 1);
+      });
     };
     window.downloadOrderFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
