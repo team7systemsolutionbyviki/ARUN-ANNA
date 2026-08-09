@@ -489,74 +489,128 @@ export const AdminViews = {
         }
       }
     };
+    window.generateSpecDocumentDataUrl = (order, file) => {
+      const name = file.name || `Document_${order.id || 'Job'}.pdf`;
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>${name}</title>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 2rem; color: #0f172a; background: #f8fafc; margin: 0; }
+    .card { background: white; border-radius: 16px; padding: 2.25rem; border: 1px solid #cbd5e1; max-width: 720px; margin: 0 auto; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #3b82f6; padding-bottom: 1.25rem; margin-bottom: 1.75rem; }
+    .brand { font-size: 0.8rem; color: #3b82f6; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .title { font-size: 1.5rem; font-weight: 800; color: #0f172a; margin-top: 0.25rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.75rem; background: #f1f5f9; padding: 1.25rem; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .label { font-size: 0.75rem; color: #64748b; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+    .val { font-size: 0.95rem; font-weight: 700; color: #0f172a; margin-top: 0.25rem; }
+    .footer { font-size: 0.85rem; color: #334155; background: #eff6ff; padding: 1.15rem; border-radius: 10px; border-left: 4px solid #3b82f6; line-height: 1.5; }
+    @media print { body { background: white; padding: 0; } .card { border: none; box-shadow: none; max-width: 100%; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div>
+        <div class="brand">Official Document Print Job Record</div>
+        <div class="title">${name}</div>
+      </div>
+      <div style="font-size:2.75rem;">🖨️</div>
+    </div>
+    <div class="grid">
+      <div><div class="label">Document Name</div><div class="val">${name}</div></div>
+      <div><div class="label">File Size & Pages</div><div class="val">${file.size || 'N/A'} • ${file.pages || 1} Page(s)</div></div>
+      <div><div class="label">Paper Size & GSM</div><div class="val">${file.options?.paperSize || 'A4'} (${file.options?.paperQuality || '70 GSM Bond'})</div></div>
+      <div><div class="label">Print Side & Copies</div><div class="val">${file.options?.printSide || 'Single'} Side • ${file.options?.copies || 1} Copy(ies)</div></div>
+      <div><div class="label">Color Mode</div><div class="val">${file.options?.colorMode || 'Black & White'}</div></div>
+      <div><div class="label">Binding & Finishing</div><div class="val">${file.options?.binding || 'None'} Binding ${file.options?.lamination ? '• ' + file.options.lamination + ' Lamination' : ''}</div></div>
+    </div>
+    <div class="footer">
+      <b>TEAM 7 SYSTEM SOLUTION — Official Print Job Specification</b><br>
+      Order ID: <b>${order.id || 'N/A'}</b> | Customer: <b>${order.customerName || 'N/A'}</b> (${order.customerPhone || 'N/A'})<br>
+      <span style="font-size:0.78rem; color:#64748b;">This document record contains all print specifications for workshop processing.</span>
+    </div>
+  </div>
+</body>
+</html>`;
+      return 'data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent);
+    };
+
     window.downloadOrderFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
-      if (!order || !order.files || !order.files[fileIndex]) {
-        NotificationService.showToast('File not found', 'error');
+      if (!order) {
+        NotificationService.showToast('Order record not found', 'error');
         return;
       }
-      const file = order.files[fileIndex];
-      const url = await StorageService.getFileUrl(file);
-
-      if (!url) {
-        NotificationService.showToast('File data URL unavailable', 'error');
+      const filesList = (order.files && order.files.length > 0) ? order.files : (order.file ? [order.file] : []);
+      const file = filesList[fileIndex] || filesList[0];
+      if (!file) {
+        NotificationService.showToast('File record unavailable', 'error');
         return;
+      }
+      let url = await StorageService.getFileUrl(file);
+      const isValidUrl = url && typeof url === 'string' &&
+        (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://'));
+
+      if (!isValidUrl) {
+        url = window.generateSpecDocumentDataUrl(order, file);
       }
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.name || `Document_${orderId}.pdf`;
+      a.download = (file.name || `Document_${orderId}`).replace(/\.[^/.]+$/, '') + '_Spec.html';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      NotificationService.showToast(`Downloading ${file.name}...`, 'success');
+      NotificationService.showToast(`Downloading ${file.name || 'document'}...`, 'success');
     };
 
     window.previewOrderFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
-      if (!order || !order.files || !order.files[fileIndex]) {
-        NotificationService.showToast('File not found', 'error');
+      if (!order) {
+        NotificationService.showToast('Order record not found', 'error');
         return;
       }
-      const file = order.files[fileIndex];
+      const filesList = (order.files && order.files.length > 0) ? order.files : (order.file ? [order.file] : []);
+      const file = filesList[fileIndex] || filesList[0];
+      if (!file) {
+        NotificationService.showToast('File record unavailable', 'error');
+        return;
+      }
+
       let previewHTML = '';
+      let viewUrl = await StorageService.getFileUrl(file);
+      const isValidUrl = viewUrl && typeof viewUrl === 'string' &&
+        (viewUrl.startsWith('data:') || viewUrl.startsWith('blob:') || viewUrl.startsWith('http://') || viewUrl.startsWith('https://'));
 
-      const viewUrl = await StorageService.getFileUrl(file);
-
-      const isImageDataUri = viewUrl && viewUrl.startsWith('data:image');
-      const isImageFileExt = (viewUrl && viewUrl.match(/\.(jpeg|jpg|png|gif|webp|svg)(\?.*)?$/i)) ||
+      const isImageDataUri = isValidUrl && viewUrl.startsWith('data:image');
+      const isImageFileExt = (isValidUrl && viewUrl.match(/\.(jpeg|jpg|png|gif|webp|svg)(\?.*)?$/i)) ||
         (file.name && file.name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i));
-
       const isImage = isImageDataUri || isImageFileExt;
 
-      if (isImage) {
+      const samplePdfUrl = StorageService.createSamplePdfDataUrl ? StorageService.createSamplePdfDataUrl(file.name, file.pages) : window.generateSpecDocumentDataUrl(order, file);
+      const activeFrameUrl = isValidUrl ? viewUrl : samplePdfUrl;
+
+      if (isImage && isValidUrl) {
         previewHTML = `
           <div style="text-align:center; padding:0.5rem; background:var(--bg-card); border-radius:8px;">
             <img src="${viewUrl}" alt="${file.name}" style="max-width:100%; max-height:68vh; border-radius:8px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); object-fit:contain;" />
           </div>
         `;
-      } else if (viewUrl) {
-        previewHTML = `
-          <div style="width:100%; height:68vh; background:var(--bg-card); border-radius:8px; overflow:hidden; border:1px solid var(--border-color);">
-            <object data="${viewUrl}" type="application/pdf" style="width:100%; height:100%;">
-              <iframe src="${viewUrl}" style="width:100%; height:100%; border:none;">
-                <div style="text-align:center; padding:3rem 2rem;">
-                  <div style="font-size:3.5rem; margin-bottom:0.5rem;">📄</div>
-                  <h3 style="font-size:1.3rem;">${file.name}</h3>
-                  <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.35rem;">Size: ${file.size || 'N/A'} • ~${file.pages || 1} page(s)</p>
-                  <button class="btn btn-sm btn-primary mt-2" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">Open Document in New Tab ↗</button>
-                </div>
-              </iframe>
-            </object>
-          </div>
-        `;
       } else {
         previewHTML = `
-          <div style="text-align:center; padding:3rem 2rem; background:var(--primary-light); border-radius:12px;">
-            <div style="font-size:3.5rem; margin-bottom:0.5rem;">📄</div>
-            <h3 style="font-size:1.3rem;">${file.name}</h3>
-            <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.35rem;">Size: ${file.size || 'N/A'} • ~${file.pages || 1} page(s)</p>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.75rem;">(Sample document record without local binary preview attached)</p>
+          <div>
+            <div style="background:var(--primary-light); padding:0.65rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+              <div style="font-weight:700; font-size:0.85rem; color:var(--primary);">📄 ${file.name} (${file.size || 'Document Print Job'})</div>
+              <div style="display:flex; gap:0.5rem;">
+                <button class="btn btn-sm btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download Document</button>
+                <button class="btn btn-sm btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open in New Tab ↗</button>
+              </div>
+            </div>
+            <div style="width:100%; height:62vh; background:var(--bg-card); border-radius:8px; overflow:hidden; border:1px solid var(--border-color);">
+              <iframe src="${activeFrameUrl}" style="width:100%; height:100%; border:none;"></iframe>
+            </div>
           </div>
         `;
       }
@@ -567,8 +621,8 @@ export const AdminViews = {
           title: `Document Preview - ${file.name}`,
           bodyHTML: previewHTML,
           footerHTML: `
-            ${viewUrl ? `<button class="btn btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download File</button>` : ''}
-            ${viewUrl ? `<button class="btn btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open Full Screen ↗</button>` : ''}
+            <button class="btn btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download Document</button>
+            <button class="btn btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open Full Screen ↗</button>
             <button class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">Close</button>
           `,
           width: '850px'
@@ -580,15 +634,22 @@ export const AdminViews = {
 
     window.openFullScreenFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
-      if (!order || !order.files || !order.files[fileIndex]) {
+      if (!order) {
+        NotificationService.showToast('Order not found', 'error');
+        return;
+      }
+      const filesList = (order.files && order.files.length > 0) ? order.files : (order.file ? [order.file] : []);
+      const file = filesList[fileIndex] || filesList[0];
+      if (!file) {
         NotificationService.showToast('File not found', 'error');
         return;
       }
-      const file = order.files[fileIndex];
-      const url = await StorageService.getFileUrl(file);
-      if (!url) {
-        NotificationService.showToast('File URL unavailable', 'error');
-        return;
+      let url = await StorageService.getFileUrl(file);
+      const isValidUrl = url && typeof url === 'string' &&
+        (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://'));
+
+      if (!isValidUrl) {
+        url = window.generateSpecDocumentDataUrl(order, file);
       }
 
       const newWin = window.open(url, '_blank');
@@ -605,14 +666,30 @@ export const AdminViews = {
       }
 
       const pay = order.payment || {};
-      let bodyHTML = '';
-      const screenshotUrl = await StorageService.getFileUrl({ url: pay.screenshotUrl, idbKey: pay.screenshotIdbKey });
+      let screenshotUrl = '';
+      const rawUrl = pay.screenshotUrl || '';
+      const rawKey = pay.screenshotIdbKey || (rawUrl.startsWith('idb://') ? rawUrl.replace('idb://', '') : '');
 
-      if (screenshotUrl && screenshotUrl.trim() !== '') {
+      if (rawKey || rawUrl) {
+        screenshotUrl = await StorageService.getFileUrl({ url: rawUrl, idbKey: rawKey });
+      }
+
+      // Decrypt/decode screenshot Data URL if encrypted
+      screenshotUrl = StorageService.decryptImage(screenshotUrl || rawUrl);
+
+      const isValidImage = screenshotUrl && typeof screenshotUrl === 'string' &&
+        (screenshotUrl.startsWith('data:image') || screenshotUrl.startsWith('blob:') || screenshotUrl.startsWith('http://') || screenshotUrl.startsWith('https://'));
+
+      let bodyHTML = '';
+      if (isValidImage) {
         bodyHTML = `
           <div style="text-align:center; padding:0.5rem;">
-            <img src="${screenshotUrl}" alt="Payment Screenshot" style="max-width:100%; max-height:65vh; border-radius:12px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); display:inline-block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-center text-muted\\' style=\\'padding:2rem;\\'>⚠️ Screenshot preview unavailable or expired.<br><a href=\\'${screenshotUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm btn-primary mt-2\\'>Open Link in New Tab</a></div>';" />
-            <div style="margin-top:1rem; font-size:0.9rem; background:var(--bg-card); padding:0.75rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+            <div style="background:var(--primary-light); padding:0.6rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap; gap:0.5rem;">
+              <div style="font-weight:700; font-size:0.85rem; color:var(--primary);">🔐 Encrypted Payment Proof (${pay.utr || 'UPI Payment'})</div>
+              <a href="${screenshotUrl}" download="Payment_Screenshot_${orderId}.png" target="_blank" class="btn btn-sm btn-primary">📥 Download / View Full ↗</a>
+            </div>
+            <img src="${screenshotUrl}" alt="Payment Screenshot" style="max-width:100%; max-height:60vh; border-radius:12px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); display:inline-block; object-fit:contain;" />
+            <div style="margin-top:1rem; font-size:0.9rem; background:var(--bg-card); padding:0.75rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
               <div>UTR / Ref: <b style="color:var(--primary); font-family:monospace;">${pay.utr || 'N/A'}</b></div>
               <div>Payer Name: <b>${pay.payerName || order.customerName}</b></div>
             </div>
@@ -623,8 +700,8 @@ export const AdminViews = {
           <div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:white; padding:2rem; border-radius:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:1rem; margin-bottom:1.5rem;">
               <div>
-                <div style="color:#10b981; font-weight:700; font-size:0.85rem; text-transform:uppercase;">✓ UPI Payment Verification</div>
-                <h3 style="font-size:1.4rem; margin-top:0.2rem;">TEAM 7 SYSTEM SOLUTION</h3>
+                <div style="color:#10b981; font-weight:700; font-size:0.85rem; text-transform:uppercase;">✓ UPI Payment Verification Record</div>
+                <h3 style="font-size:1.4rem; margin-top:0.2rem;">${settings.shopName || 'TEAM 7 SYSTEM SOLUTION'}</h3>
               </div>
               <div style="font-size:2.5rem;">📱</div>
             </div>
@@ -646,7 +723,7 @@ export const AdminViews = {
             </div>
 
             <div style="margin-top:1.25rem; font-size:0.8rem; color:#94a3b8; text-align:center;">
-              No payment screenshot file was attached for this order.
+              Customer submitted UTR payment verification without attaching an image screenshot file.
             </div>
           </div>
         `;
@@ -655,7 +732,7 @@ export const AdminViews = {
       const modal = ModalComponent || window.ModalComponent;
       if (modal) {
         modal.show({
-          title: `Payment Receipt Inspection - ${order.id}`,
+          title: `🖼️ Payment Verification - Order ${orderId}`,
           bodyHTML: bodyHTML,
           footerHTML: `<button class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">Close</button>`,
           width: '650px'
