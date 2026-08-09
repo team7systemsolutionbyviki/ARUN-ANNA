@@ -1310,16 +1310,9 @@ export const PublicViews = {
           let screenshotIdbKey = '';
           if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
             try {
-              const file = screenshotInput.files[0];
-              // Encrypt & compress screenshot image for 100% safe permanent storage & preview in Admin
-              try {
-                screenshotUrl = await StorageService.encryptImage(file, 850, 0.78);
-              } catch (e) {}
-              const uploaded = await StorageService.uploadFile(file, 'receipts');
+              const uploaded = await StorageService.uploadFile(screenshotInput.files[0], 'receipts');
+              screenshotUrl = uploaded.url || '';
               screenshotIdbKey = uploaded.idbKey || '';
-              if (!screenshotUrl && uploaded.url && !uploaded.url.startsWith('idb://')) {
-                screenshotUrl = uploaded.url;
-              }
             } catch (err) {
               console.warn('Screenshot processing failed, proceeding without screenshot:', err);
             }
