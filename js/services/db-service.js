@@ -209,12 +209,6 @@ export const DBService = {
       if (newStatus === 'Payment Approved' && orders[index].payment) {
         orders[index].payment.status = 'Verified';
       }
-      if (newStatus === 'Completed' || newStatus === 'Rejected') {
-        try {
-          const { StorageService } = await import('./storage-service.js');
-          StorageService.deleteOrderFiles(orders[index]);
-        } catch (e) {}
-      }
 
       const cleanOrders = orders.map(o => this.sanitizeOrderForStorage(o));
       localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));

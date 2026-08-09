@@ -47,21 +47,6 @@ export const PublicViews = {
                   <div class="stat-label">${I18nService.t('stat_speed')}</div>
                 </div>
               </div>
-
-              <!-- 100% Privacy & Auto-Deletion Guarantee Notice Box -->
-              <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%); border: 1.5px solid rgba(16, 185, 129, 0.38); border-radius: 14px; padding: 1.1rem 1.35rem; margin-top: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.08);">
-                <div style="font-size: 2.2rem; flex-shrink: 0; background: rgba(16, 185, 129, 0.2); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(16, 185, 129, 0.4);">
-                  🛡️
-                </div>
-                <div>
-                  <h4 style="font-size: 0.95rem; font-weight: 800; color: #059669; margin: 0 0 0.25rem 0; display:flex; align-items:center; gap:0.4rem;">
-                    ${I18nService.t('privacy_title')}
-                  </h4>
-                  <p style="font-size: 0.84rem; color: var(--text-main); margin: 0; font-weight: 600; line-height: 1.45;">
-                    ${I18nService.t('privacy_desc')}
-                  </p>
-                </div>
-              </div>
             </div>
 
             <!-- Hero Floating Card -->
@@ -447,10 +432,20 @@ export const PublicViews = {
               <!-- Step 1: Upload Files -->
               <div id="step-1-content" class="glass-panel" style="padding:2rem;">
                 <h3 style="margin-bottom:1rem;">${I18nService.t('wizard_step1')}</h3>
-                <!-- Privacy & Auto-Deletion Guarantee Notice -->
-                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%); border: 1.5px solid rgba(16, 185, 129, 0.38); border-radius: 12px; padding: 0.85rem 1.15rem; margin-bottom: 1.25rem; font-size: 0.85rem; display: flex; gap: 0.75rem; align-items: center;">
-                  <span style="font-size: 1.4rem; flex-shrink: 0;">🛡️</span>
-                  <span><b>${I18nService.t('privacy_title')}:</b> ${I18nService.t('privacy_desc')}</span>
+
+                <!-- PDF Only Format Notice & Word/Excel/PPT/Image Conversion Guide Banner -->
+                <div style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(239, 68, 68, 0.08) 100%); border: 1.5px solid rgba(245, 158, 11, 0.45); border-radius: 12px; padding: 0.95rem 1.25rem; margin-bottom: 1.25rem; font-size: 0.86rem; display: flex; gap: 0.85rem; align-items: flex-start; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.08);">
+                  <div style="font-size: 1.5rem; flex-shrink: 0; background: rgba(245, 158, 11, 0.2); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(245, 158, 11, 0.5);">
+                    ⚠️
+                  </div>
+                  <div style="line-height: 1.5;">
+                    <div style="font-weight: 800; color: #d97706; font-size: 0.925rem; margin-bottom: 0.2rem;">
+                      ${I18nService.t('pdf_only_title')}
+                    </div>
+                    <div style="color: var(--text-main); font-weight: 600;">
+                      ${I18nService.t('pdf_only_desc')}
+                    </div>
+                  </div>
                 </div>
 
                 <div class="dropzone" id="file-dropzone">
@@ -800,7 +795,7 @@ export const PublicViews = {
 
       const validFiles = filesArray.filter(file => {
         if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
-          NotificationService.showToast(`${file.name} is not a PDF file. Only PDF accepted!`, 'error');
+          NotificationService.showToast(`⚠️ "${file.name}" is not a PDF file. Word, Excel, PPT & Images not allowed! Please convert to PDF first (File → Save As → PDF).`, 'warning');
           return false;
         }
         if (file.size > 200 * 1024 * 1024) {
