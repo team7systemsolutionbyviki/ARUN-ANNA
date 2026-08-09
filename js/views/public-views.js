@@ -453,19 +453,6 @@ export const PublicViews = {
                   <span><b>${I18nService.t('privacy_title')}:</b> ${I18nService.t('privacy_desc')}</span>
                 </div>
 
-                <!-- PDF Only Conversion Instructions Box -->
-                <div style="background:rgba(245,158,11,0.12); border:1.5px solid rgba(245,158,11,0.4); border-radius:12px; padding:0.9rem 1.15rem; margin-bottom:1.25rem; font-size:0.86rem; display:flex; gap:0.75rem; align-items:flex-start;">
-                  <span style="font-size:1.4rem; flex-shrink:0;">💡</span>
-                  <div>
-                    <div style="font-weight:800; color:#d97706; margin-bottom:0.25rem;">
-                      ${I18nService.t('pdf_only_notice_title')}
-                    </div>
-                    <div style="color:var(--text-main); line-height:1.45;">
-                      ${I18nService.t('pdf_only_notice_desc')}
-                    </div>
-                  </div>
-                </div>
-
                 <div class="dropzone" id="file-dropzone">
                   <div class="dropzone-icon">📁</div>
                   <h4 style="margin-bottom:0.25rem;">${I18nService.t('upload_drop')}</h4>
