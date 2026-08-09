@@ -8,12 +8,14 @@ import { DBService } from '../services/db-service.js';
 import { PricingEngine } from '../services/pricing-engine.js';
 import { StorageService } from '../services/storage-service.js';
 import { NotificationService } from '../services/notification-service.js';
+import { I18nService } from '../services/i18n-service.js';
 import { formatCurrency, getStatusBadgeHTML, formatDate, formatTime } from '../utils/formatters.js';
 
 export const PublicViews = {
   // --- HOME PAGE ---
   async renderHome() {
     const settings = await DBService.getSettings();
+    const pricing = PricingEngine.getPricingData();
     const app = document.getElementById('app-content');
 
     app.innerHTML = `
@@ -22,75 +24,105 @@ export const PublicViews = {
         <div class="container">
           <div class="hero-grid">
             <div class="animate-fade-in">
-              <span class="badge badge-approved mb-2" style="font-size:0.85rem;">⚡ Instant Online Document Printing</span>
-              <h1 class="hero-title">High Quality Printing Delivered Right To Your Doorstep</h1>
-              <p class="hero-subtitle">Upload your documents, customize paper GSM, color & binding options, pay securely via Business UPI QR, and get your prints fast!</p>
+              <span class="badge badge-approved mb-2" style="font-size:0.85rem;">${I18nService.t('hero_badge')}</span>
+              <h1 class="hero-title">${I18nService.t('hero_title')}</h1>
+              <p class="hero-subtitle">${I18nService.t('hero_subtitle')}</p>
               
               <div class="flex gap-2 items-center" style="flex-wrap:wrap;">
-                <a href="#order" class="btn btn-lg btn-primary glow-effect">🖨️ Print Documents Now</a>
-                <a href="#track" class="btn btn-lg btn-secondary">🔍 Track Your Order</a>
+                <a href="#order" class="btn btn-lg btn-primary glow-effect">${I18nService.t('btn_print_now')}</a>
+                <a href="#track" class="btn btn-lg btn-secondary">${I18nService.t('btn_track_order')}</a>
               </div>
 
               <div class="hero-stats">
                 <div>
                   <div class="stat-number">15,000+</div>
-                  <div class="stat-label">Orders Completed</div>
+                  <div class="stat-label">${I18nService.t('stat_completed')}</div>
                 </div>
                 <div>
                   <div class="stat-number">100%</div>
-                  <div class="stat-label">Quality Guaranteed</div>
+                  <div class="stat-label">${I18nService.t('stat_quality')}</div>
                 </div>
                 <div>
                   <div class="stat-number">2 - 4 Hrs</div>
-                  <div class="stat-label">Fast Pickup Time</div>
+                  <div class="stat-label">${I18nService.t('stat_speed')}</div>
+                </div>
+              </div>
+
+              <!-- 100% Privacy & Auto-Deletion Guarantee Notice Box -->
+              <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%); border: 1.5px solid rgba(16, 185, 129, 0.38); border-radius: 14px; padding: 1.1rem 1.35rem; margin-top: 1.5rem; display: flex; align-items: center; gap: 1rem; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.08);">
+                <div style="font-size: 2.2rem; flex-shrink: 0; background: rgba(16, 185, 129, 0.2); width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(16, 185, 129, 0.4);">
+                  🛡️
+                </div>
+                <div>
+                  <h4 style="font-size: 0.95rem; font-weight: 800; color: #059669; margin: 0 0 0.25rem 0; display:flex; align-items:center; gap:0.4rem;">
+                    ${I18nService.t('privacy_title')}
+                  </h4>
+                  <p style="font-size: 0.84rem; color: var(--text-main); margin: 0; font-weight: 600; line-height: 1.45;">
+                    ${I18nService.t('privacy_desc')}
+                  </p>
                 </div>
               </div>
             </div>
 
             <!-- Hero Floating Card -->
-            <div class="glass-panel hero-card glow-effect animate-fade-in">
-              <h3 style="margin-bottom:1rem; font-size:1.4rem;">⚡ Quick Print Calculator</h3>
+            <div class="glass-panel hero-card glow-effect animate-fade-in" style="padding:1.75rem;">
+              <h3 style="margin-bottom:1rem; font-size:1.4rem;">${I18nService.t('calc_title')}</h3>
               
               <div class="form-group">
-                <label class="form-label">Paper Size</label>
+                <label class="form-label">${I18nService.t('calc_size')}</label>
                 <select class="form-select" id="quick-size">
-                  <option value="A4">A4 Standard (210x297mm)</option>
-                  <option value="A5">A5 Compact</option>
-                  <option value="Legal">Legal Size</option>
-                  <option value="A3">A3 Large Poster</option>
+                  ${Object.entries(pricing.paperSizes || {}).map(([sKey, sObj]) => `
+                    <option value="${sKey}">${sObj.label || sKey}</option>
+                  `).join('')}
                 </select>
               </div>
 
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
                 <div class="form-group">
-                  <label class="form-label">Color Mode</label>
+                  <label class="form-label">${I18nService.t('calc_color')}</label>
                   <select class="form-select" id="quick-color">
-                    <option value="Black & White">Black & White</option>
-                    <option value="Color">Full Color</option>
+                    <option value="Black & White">${I18nService.t('color_bw')}</option>
+                    <option value="Color">${I18nService.t('color_full')}</option>
+                    <option value="Custom Split">${I18nService.t('color_split')}</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label class="form-label">Pages</label>
+                  <label class="form-label">${I18nService.t('calc_pages')}</label>
                   <input type="number" class="form-control" id="quick-pages" value="20" min="1">
                 </div>
               </div>
 
+              <!-- Custom Split Color Ranges Input -->
+              <div class="form-group" id="quick-split-container" style="display:none; background:rgba(59,130,246,0.06); padding:0.85rem; border-radius:10px; border:1px dashed rgba(59,130,246,0.3); margin-bottom:1rem;">
+                <label class="form-label" style="font-size:0.82rem; font-weight:700; color:var(--primary); margin-bottom:0.35rem;">🎨 Color Page Numbers / Ranges</label>
+                <input type="text" class="form-control" id="quick-color-pages" placeholder="e.g. 1-3, 10, 15-20" value="1-3" style="font-size:0.85rem;">
+                <span style="font-size:0.72rem; color:var(--text-muted); margin-top:0.25rem; display:block;">Specified pages will print in Color. Remaining pages print in B&W.</span>
+              </div>
+
               <div class="form-group">
-                <label class="form-label">Binding Option</label>
+                <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>${I18nService.t('calc_binding')}</span>
+                  <button type="button" class="btn btn-sm btn-link" style="padding:0; border:none; background:none; font-size:0.75rem; color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="window.showBindingInfoModal()" title="What is document binding?">
+                    ${I18nService.t('calc_what_is_binding')}
+                  </button>
+                </label>
                 <select class="form-select" id="quick-binding">
-                  <option value="None">No Binding</option>
-                  <option value="Spiral">Spiral Binding (₹35)</option>
-                  <option value="Soft">Soft Cover (₹65)</option>
-                  <option value="Hard">Hard Book Bound (₹140)</option>
+                  ${Object.entries(pricing.bindings || {}).map(([bKey, bObj]) => `
+                    <option value="${bKey}">${bKey} ${bObj.price > 0 ? `(₹${bObj.price})` : '(Free - No Binding)'}</option>
+                  `).join('')}
                 </select>
+              </div>
+
+              <!-- Live Split Breakdown Details Card -->
+              <div id="quick-split-breakdown" style="display:none; background:var(--bg-card); padding:0.75rem 1rem; border-radius:10px; border:1px solid var(--border-color); font-size:0.82rem; margin-top:0.75rem;">
               </div>
 
               <div style="background:var(--primary-light); padding:1rem; border-radius:12px; margin-top:1rem; display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                  <span style="font-size:0.8rem; color:var(--text-muted);">Estimated Total</span>
+                  <span style="font-size:0.8rem; color:var(--text-muted);">${I18nService.t('calc_estimated')}</span>
                   <div style="font-size:1.5rem; font-weight:800; color:var(--primary);" id="quick-price-val">₹65.00</div>
                 </div>
-                <a href="#order" class="btn btn-sm btn-primary">Start Order →</a>
+                <a href="#order" class="btn btn-sm btn-primary">${I18nService.t('btn_print_now')} →</a>
               </div>
             </div>
           </div>
@@ -101,8 +133,8 @@ export const PublicViews = {
       <section id="services-section" style="padding: 4rem 0; background-color: var(--bg-card); border-top: 1px solid var(--border-color);">
         <div class="container">
           <div class="text-center mb-4">
-            <h2 style="font-size: 2.25rem;">Our Printing Services</h2>
-            <p class="text-muted" style="max-width: 600px; margin: 0.5rem auto 0;">From project reports to hardbound books, we deliver high-precision print solutions.</p>
+            <h2 style="font-size: 2.25rem;">${I18nService.t('services_heading')}</h2>
+            <p class="text-muted" style="max-width: 600px; margin: 0.5rem auto 0;">${I18nService.t('services_subheading')}</p>
           </div>
 
           <div class="services-grid">
@@ -131,30 +163,30 @@ export const PublicViews = {
       <section id="how-it-works-section" style="padding: 4rem 0;">
         <div class="container">
           <div class="text-center mb-4">
-            <h2 style="font-size: 2.25rem;">How Ordering Works</h2>
-            <p class="text-muted">4 simple steps to get your documents printed effortlessly.</p>
+            <h2 style="font-size: 2.25rem;">${I18nService.t('how_it_works_title')}</h2>
+            <p class="text-muted">${I18nService.t('how_it_works_sub')}</p>
           </div>
 
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:2rem;">
             <div class="glass-panel" style="padding:1.75rem; text-align:center;">
               <div style="width:48px; height:48px; background:var(--primary); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.2rem; margin:0 auto 1rem;">1</div>
-              <h4>Upload Files</h4>
-              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">Drop PDF, Word, Excel, PowerPoint or Image files up to 200MB.</p>
+              <h4>${I18nService.t('step1_title')}</h4>
+              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">${I18nService.t('step1_desc')}</p>
             </div>
             <div class="glass-panel" style="padding:1.75rem; text-align:center;">
               <div style="width:48px; height:48px; background:var(--primary); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.2rem; margin:0 auto 1rem;">2</div>
-              <h4>Customize Options</h4>
-              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">Select paper size (A4, A3), GSM, B&W/Color, and binding type.</p>
+              <h4>${I18nService.t('step2_title')}</h4>
+              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">${I18nService.t('step2_desc')}</p>
             </div>
             <div class="glass-panel" style="padding:1.75rem; text-align:center;">
               <div style="width:48px; height:48px; background:var(--primary); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.2rem; margin:0 auto 1rem;">3</div>
-              <h4>UPI QR Payment</h4>
-              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">Scan Business UPI QR Code using GooglePay/PhonePe & submit UTR.</p>
+              <h4>${I18nService.t('step3_title')}</h4>
+              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">${I18nService.t('step3_desc')}</p>
             </div>
             <div class="glass-panel" style="padding:1.75rem; text-align:center;">
               <div style="width:48px; height:48px; background:var(--success); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:1.2rem; margin:0 auto 1rem;">4</div>
-              <h4>Pickup or Delivery</h4>
-              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">Track order status online and collect your print package!</p>
+              <h4>${I18nService.t('step4_title')}</h4>
+              <p class="text-muted" style="font-size:0.875rem; margin-top:0.5rem;">${I18nService.t('step4_desc')}</p>
             </div>
           </div>
         </div>
@@ -198,19 +230,54 @@ export const PublicViews = {
       const colorMode = document.getElementById('quick-color')?.value || "Black & White";
       const pages = parseInt(document.getElementById('quick-pages')?.value) || 1;
       const binding = document.getElementById('quick-binding')?.value || "None";
+      const colorPageRange = document.getElementById('quick-color-pages')?.value || "";
+
+      const splitContainer = document.getElementById('quick-split-container');
+      const breakdownEl = document.getElementById('quick-split-breakdown');
+
+      if (colorMode === 'Custom Split') {
+        if (splitContainer) splitContainer.style.display = 'block';
+      } else {
+        if (splitContainer) splitContainer.style.display = 'none';
+      }
 
       const quote = PricingEngine.calculateQuote({
         paperSize,
-        colorMode,
+        colorMode: colorMode === 'Custom Split' ? 'Custom Split' : colorMode,
+        colorPageRange: colorMode === 'Custom Split' ? colorPageRange : '',
         binding,
         copies: 1
       }, pages);
 
       const el = document.getElementById('quick-price-val');
       if (el) el.innerText = formatCurrency(quote.total);
+
+      // Render live split breakdown details if Custom Split mode is active
+      if (breakdownEl) {
+        if (colorMode === 'Custom Split') {
+          breakdownEl.style.display = 'block';
+          breakdownEl.innerHTML = `
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+              <span>⬛ B&W Pages: <b>${quote.bwPagesCount || 0} pgs</b></span>
+              <span style="font-weight:700;">${formatCurrency(quote.paperCost)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+              <span>🎨 Color Pages: <b>${quote.colorPagesCount || 0} pgs</b></span>
+              <span style="font-weight:700; color:#059669;">${formatCurrency(quote.colorCost)}</span>
+            </div>
+            ${quote.bindingCost > 0 ? `
+            <div style="display:flex; justify-content:space-between; border-top:1px dashed var(--border-color); padding-top:0.25rem; margin-top:0.25rem;">
+              <span>📚 Binding:</span>
+              <span style="font-weight:700;">${formatCurrency(quote.bindingCost)}</span>
+            </div>` : ''}
+          `;
+        } else {
+          breakdownEl.style.display = 'none';
+        }
+      }
     };
 
-    ['quick-size', 'quick-color', 'quick-pages', 'quick-binding'].forEach(id => {
+    ['quick-size', 'quick-color', 'quick-pages', 'quick-binding', 'quick-color-pages'].forEach(id => {
       document.getElementById(id)?.addEventListener('change', updateQuickCalc);
       document.getElementById(id)?.addEventListener('input', updateQuickCalc);
     });
@@ -372,25 +439,38 @@ export const PublicViews = {
             <!-- Left Wizard Form Area -->
             <div>
               <div class="wizard-steps-bar">
-                <div class="wizard-step-tab active" id="tab-1">1. Upload &amp; Configure</div>
-                <div class="wizard-step-tab" id="tab-2">2. Contact Details</div>
-                <div class="wizard-step-tab" id="tab-3">3. UPI Payment</div>
+                <div class="wizard-step-tab active" id="tab-1">${I18nService.t('wizard_step1')}</div>
+                <div class="wizard-step-tab" id="tab-2">${I18nService.t('wizard_step2')}</div>
+                <div class="wizard-step-tab" id="tab-3">${I18nService.t('wizard_step3')}</div>
               </div>
 
               <!-- Step 1: Upload Files -->
               <div id="step-1-content" class="glass-panel" style="padding:2rem;">
-                <h3 style="margin-bottom:1rem;">Upload Documents</h3>
-                <div style="background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.35); border-radius:var(--radius-md); padding:0.75rem 1rem; margin-bottom:1.25rem; font-size:0.875rem; display:flex; gap:0.6rem; align-items:flex-start;">
-                  <span style="font-size:1.1rem; flex-shrink:0;">💡</span>
-                  <span><b>Note:</b> Word documents (.doc / .docx), Excel, PowerPoint (PPT) and Image files are <b>not accepted</b>. Please <b>convert your Word / Excel / PPT / Image file to PDF</b> first, then upload the PDF here. Use <i>File → Save As → PDF</i> in Microsoft Word or Google Docs.</span>
+                <h3 style="margin-bottom:1rem;">${I18nService.t('wizard_step1')}</h3>
+                <!-- Privacy & Auto-Deletion Guarantee Notice -->
+                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%); border: 1.5px solid rgba(16, 185, 129, 0.38); border-radius: 12px; padding: 0.85rem 1.15rem; margin-bottom: 1.25rem; font-size: 0.85rem; display: flex; gap: 0.75rem; align-items: center;">
+                  <span style="font-size: 1.4rem; flex-shrink: 0;">🛡️</span>
+                  <span><b>${I18nService.t('privacy_title')}:</b> ${I18nService.t('privacy_desc')}</span>
                 </div>
-                <p class="text-muted" style="margin-bottom:1.5rem; font-size:0.9rem;">Accepted formats: <b>PDF only</b>. Max file size: 200MB.</p>
+
+                <!-- PDF Only Conversion Instructions Box -->
+                <div style="background:rgba(245,158,11,0.12); border:1.5px solid rgba(245,158,11,0.4); border-radius:12px; padding:0.9rem 1.15rem; margin-bottom:1.25rem; font-size:0.86rem; display:flex; gap:0.75rem; align-items:flex-start;">
+                  <span style="font-size:1.4rem; flex-shrink:0;">💡</span>
+                  <div>
+                    <div style="font-weight:800; color:#d97706; margin-bottom:0.25rem;">
+                      ${I18nService.t('pdf_only_notice_title')}
+                    </div>
+                    <div style="color:var(--text-main); line-height:1.45;">
+                      ${I18nService.t('pdf_only_notice_desc')}
+                    </div>
+                  </div>
+                </div>
 
                 <div class="dropzone" id="file-dropzone">
                   <div class="dropzone-icon">📁</div>
-                  <h4 style="margin-bottom:0.25rem;">Drag & Drop your files here</h4>
-                  <p class="text-muted" style="font-size:0.875rem; margin-bottom:1rem;">Only <b>PDF</b> files accepted &nbsp;•&nbsp; Max 200MB per file</p>
-                  <button type="button" class="btn btn-sm btn-primary" id="btn-browse-trigger">📁 Browse Files from Device</button>
+                  <h4 style="margin-bottom:0.25rem;">${I18nService.t('upload_drop')}</h4>
+                  <p class="text-muted" style="font-size:0.875rem; margin-bottom:1rem;">${I18nService.t('upload_note')}</p>
+                  <button type="button" class="btn btn-sm btn-primary" id="btn-browse-trigger">📁 Browse Files</button>
                 </div>
                 <input type="file" id="file-input" multiple accept=".pdf,application/pdf" style="display:none;" />
 
@@ -399,23 +479,22 @@ export const PublicViews = {
 
                 <div class="flex justify-between mt-4">
                   <div></div>
-                  <button class="btn btn-primary" id="btn-to-step-2">Continue to Contact Details →</button>
+                  <button class="btn btn-primary" id="btn-to-step-2">${I18nService.t('btn_proceed_contact')}</button>
                 </div>
               </div>
 
               <!-- Step 2: Contact Info -->
-
               <div id="step-2-content" class="glass-panel" style="padding:2rem; display:none;">
-                <h3 style="margin-bottom:1.5rem;">Customer Details</h3>
+                <h3 style="margin-bottom:1.5rem;">${I18nService.t('wizard_step2')}</h3>
 
                 <div class="form-group">
-                  <label class="form-label">Full Name *</label>
+                  <label class="form-label">${I18nService.t('cust_name_label')}</label>
                   <input type="text" class="form-control" id="cust-name" placeholder="Enter your full name" required>
                 </div>
 
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;">
                   <div class="form-group">
-                    <label class="form-label">Mobile Phone Number *</label>
+                    <label class="form-label">${I18nService.t('cust_phone_label')}</label>
                     <input type="tel" class="form-control" id="cust-phone" placeholder="10-digit mobile number" required>
                   </div>
                   <div class="form-group">
@@ -425,7 +504,7 @@ export const PublicViews = {
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">Delivery Zone / Area Selection *</label>
+                  <label class="form-label">${I18nService.t('delivery_zone_label')}</label>
                   <select class="form-select" id="cust-delivery-zone" style="font-weight:600; color:var(--primary);">
                     ${Object.entries(pricing.deliveryZones || {}).map(([key, item]) => `
                       <option value="${key}">${item.label}</option>
@@ -434,38 +513,47 @@ export const PublicViews = {
                 </div>
 
                 <div class="form-group">
-                  <label class="form-label">Delivery Address (Optional for Pickup)</label>
+                  <label class="form-label">${I18nService.t('delivery_address_label')}</label>
                   <textarea class="form-control" id="cust-address" placeholder="Enter full address if requesting doorstep delivery"></textarea>
                 </div>
 
                 <div class="flex justify-between mt-4">
-                  <button class="btn btn-secondary" id="btn-back-to-step-1">← Back</button>
-                  <button class="btn btn-primary" id="btn-to-step-3">Proceed to UPI Payment →</button>
+                  <button class="btn btn-secondary" id="btn-back-to-step-1">${I18nService.t('back_btn')}</button>
+                  <button class="btn btn-primary" id="btn-to-step-3">${I18nService.t('proceed_payment')}</button>
                 </div>
               </div>
 
               <!-- Step 3: UPI Payment -->
               <div id="step-3-content" class="glass-panel" style="padding:2rem; display:none;">
-                <h3 style="margin-bottom:1rem;">Business UPI QR Payment</h3>
-                <p class="text-muted" style="margin-bottom:1.5rem; font-size:0.9rem;">Scan the merchant QR code with Google Pay, PhonePe, Paytm or BHIM UPI to complete payment.</p>
+                <h3 style="margin-bottom:1rem;">${I18nService.t('payment_heading')}</h3>
+                <p class="text-muted" style="margin-bottom:1.5rem; font-size:0.9rem;">${I18nService.t('payment_sub')}</p>
 
-                <div style="display:grid; grid-template-columns: 220px 1fr; gap:2rem; background:var(--bg-card); border:1px solid var(--border-color); padding:1.5rem; border-radius:var(--radius-lg); margin-bottom:1.5rem;">
+                <div style="display:grid; grid-template-columns: 220px 1fr; gap:2rem; background:var(--bg-card); border:1px solid var(--border-color); padding:1.5rem; border-radius:var(--radius-lg); margin-bottom:1.5rem; align-items:center;">
                   <div style="text-align:center;">
-                    <div id="upi-qr-canvas-box" style="background:white; padding:10px; border-radius:12px; display:inline-block; border:1px solid #cbd5e1;">
-                      <!-- QR Canvas rendered here -->
+                    <div id="upi-qr-canvas-box" style="background:white; padding:10px; border-radius:14px; display:inline-block; border:1px solid var(--border-color); box-shadow:var(--shadow-md);">
+                      <!-- QR Code dynamically generated here -->
                       <div style="width:180px; height:180px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; border-radius:8px;">
-                        <span style="font-size:3rem;">📱</span>
+                        <span style="font-size:3rem;">⏳</span>
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <h4 style="color:var(--primary); font-size:1.1rem; margin-bottom:0.35rem;">${settings.merchantName}</h4>
-                    <p style="font-size:0.875rem; color:var(--text-muted);">UPI ID: <b style="color:var(--text-main);" id="merchant-upi-text">${settings.upiId}</b></p>
-                    <p style="font-size:1.4rem; font-weight:800; color:var(--primary); margin:0.75rem 0;" id="qr-payable-amount">₹0.00</p>
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem;">
+                      <span style="font-size:1.2rem;">🏪</span>
+                      <h4 style="color:var(--primary); font-size:1.15rem; font-weight:800; margin:0;">${settings.merchantName || settings.shopName}</h4>
+                    </div>
+                    <p style="font-size:0.875rem; color:var(--text-muted); margin-bottom:0.5rem;">UPI ID: <b style="color:var(--text-main); font-family:monospace; background:var(--primary-light); padding:0.2rem 0.5rem; border-radius:6px; border:1px solid var(--border-color);" id="merchant-upi-text">${settings.upiId}</b></p>
+                    <p style="font-size:1.6rem; font-weight:800; color:var(--primary); margin:0.5rem 0;" id="qr-payable-amount">₹0.00</p>
                     
-                    <div style="background:var(--primary-light); padding:0.75rem 1rem; border-radius:8px; font-size:0.825rem;">
-                      💡 <b>Instructions:</b> Open any UPI App ➔ Scan QR ➔ Pay Exact Amount ➔ Copy the 12-digit UTR/Ref Number and paste below.
+                    <div style="background:var(--primary-light); padding:0.85rem 1rem; border-radius:10px; border:1px solid var(--border-color); font-size:0.85rem; line-height:1.4;">
+                      ${I18nService.t('instructions_title')}
+                      <ol style="margin:0.35rem 0 0 1.1rem; padding:0;">
+                        <li>Open <b>Google Pay / PhonePe / Paytm / BHIM</b> on your mobile.</li>
+                        <li>Scan the <b>Business QR Code</b> on left or click the direct button.</li>
+                        <li>Pay exact amount of <b style="color:var(--primary);" id="instructions-amount">₹0.00</b>.</li>
+                        <li>Enter the 12-digit UTR/UPI Ref Number & Payer Name below.</li>
+                      </ol>
                     </div>
                   </div>
                 </div>
@@ -476,24 +564,24 @@ export const PublicViews = {
 
                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;">
                     <div class="form-group">
-                      <label class="form-label">12-Digit UTR / UPI Ref Number *</label>
+                      <label class="form-label">${I18nService.t('utr_label')}</label>
                       <input type="text" class="form-control" id="pay-utr" placeholder="E.g., 329817264512" maxlength="18" required>
                     </div>
 
                     <div class="form-group">
-                      <label class="form-label">Payer Name / UPI Account Name *</label>
+                      <label class="form-label">${I18nService.t('payer_name_label')}</label>
                       <input type="text" class="form-control" id="pay-name" placeholder="Name shown in UPI app" required>
                     </div>
                   </div>
 
                   <div class="form-group">
-                    <label class="form-label">Upload Payment Screenshot (Optional but speeds up verification)</label>
+                    <label class="form-label">${I18nService.t('screenshot_label')}</label>
                     <input type="file" class="form-control" id="pay-screenshot" accept="image/*">
                   </div>
 
                   <div class="flex justify-between mt-4">
-                    <button class="btn btn-secondary" id="btn-back-to-step-2">← Back</button>
-                    <button class="btn btn-success btn-lg glow-effect" id="btn-submit-final-order">🚀 Submit Order &amp; Payment</button>
+                    <button class="btn btn-secondary" id="btn-back-to-step-2">${I18nService.t('back_btn')}</button>
+                    <button class="btn btn-success btn-lg glow-effect" id="btn-submit-final-order">${I18nService.t('submit_order')}</button>
                   </div>
                 </div>
               </div>
@@ -501,35 +589,40 @@ export const PublicViews = {
 
             <!-- Right Dynamic Price Box -->
             <div class="price-summary-box glow-effect">
-              <h3 style="margin-bottom:1rem; font-size:1.25rem;">Order Price Summary</h3>
+              <h3 style="margin-bottom:1rem; font-size:1.25rem;">${I18nService.t('summary_title')}</h3>
 
               <div id="summary-file-count" style="font-size:0.875rem; color:var(--text-muted); margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">
                 No files uploaded yet.
               </div>
 
               <div class="price-row" id="row-print-cost">
-                <span id="label-print-cost">Printing:</span>
+                <span id="label-print-cost">${I18nService.t('summary_printing')}</span>
                 <span id="price-paper">₹0.00</span>
               </div>
               <div class="price-row" id="row-color" style="display:none;">
-                <span>Color Printing Extra:</span>
+                <span id="label-color-cost">${I18nService.t('summary_color_extra')}</span>
                 <span id="price-color">₹0.00</span>
               </div>
               <div class="price-row" id="row-binding" style="display:none;">
-                <span>Binding Cost:</span>
+                <span style="display:inline-flex; align-items:center; gap:0.3rem;">
+                  <span id="label-binding-cost">${I18nService.t('summary_binding')}</span>
+                  <button type="button" class="btn btn-sm btn-link" style="padding:0; border:none; background:none; font-size:0.75rem; color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="window.showBindingInfoModal()" title="What is document binding?">
+                    ${I18nService.t('calc_what_is_binding')}
+                  </button>
+                </span>
                 <span id="price-binding">₹0.00</span>
               </div>
               <div class="price-row" id="row-lamination" style="display:none;">
-                <span>Lamination:</span>
+                <span>${I18nService.t('summary_lamination')}</span>
                 <span id="price-lamination">₹0.00</span>
               </div>
               <div class="price-row" id="row-delivery" style="display:none;">
-                <span>Delivery Charge:</span>
+                <span>${I18nService.t('summary_delivery')}</span>
                 <span id="price-delivery">₹0.00</span>
               </div>
 
               <div class="price-row total-row">
-                <span>Grand Total:</span>
+                <span>${I18nService.t('summary_grand_total')}</span>
                 <span id="price-grand-total">₹0.00</span>
               </div>
             </div>
@@ -544,12 +637,15 @@ export const PublicViews = {
 
       // Aggregate pricing across all files using per-file options
       let totalPaper = 0, totalColor = 0, totalBinding = 0, totalLamination = 0;
+      let totalBwPages = 0, totalColorPages = 0;
       state.files.forEach(f => {
         const q = PricingEngine.calculateQuote(f.options, f.pages);
         totalPaper += q.paperCost;
         totalColor += q.colorCost;
         totalBinding += q.bindingCost;
         totalLamination += q.laminationCost;
+        totalBwPages += (q.bwPagesCount || 0) * (q.copies || 1);
+        totalColorPages += (q.colorPagesCount || 0) * (q.copies || 1);
       });
 
       const deliveryZones = pricing.deliveryZones || {};
@@ -559,16 +655,29 @@ export const PublicViews = {
       const total = subtotal;
       const quote = { paperCost: totalPaper, colorCost: totalColor, bindingCost: totalBinding, laminationCost: totalLamination, deliveryFee, deliveryZone: selectedZoneKey, gst: 0, total };
 
+      const labelPrintCostEl = document.getElementById('label-print-cost');
+      if (labelPrintCostEl) {
+        labelPrintCostEl.innerText = totalColorPages > 0 ? `B&W Print (${totalBwPages} pgs):` : `Printing (${totalBwPages} pgs):`;
+      }
       const paperEl = document.getElementById('price-paper');
       if (paperEl) paperEl.innerText = formatCurrency(totalPaper);
 
       const colorRow = document.getElementById('row-color');
       if (colorRow) colorRow.style.display = totalColor > 0 ? '' : 'none';
+      const labelColorCostEl = document.getElementById('label-color-cost');
+      if (labelColorCostEl) {
+        labelColorCostEl.innerText = `Color Print (${totalColorPages} pgs):`;
+      }
       const colorEl = document.getElementById('price-color');
       if (colorEl) colorEl.innerText = formatCurrency(totalColor);
 
       const bindingRow = document.getElementById('row-binding');
       if (bindingRow) bindingRow.style.display = totalBinding > 0 ? '' : 'none';
+      const labelBindingEl = document.getElementById('label-binding-cost');
+      if (labelBindingEl) {
+        const bindingNames = Array.from(new Set(state.files.map(f => f.options?.binding).filter(b => b && b !== 'None')));
+        labelBindingEl.innerText = bindingNames.length > 0 ? `Binding (${bindingNames.join(', ')}):` : `Binding Cost:`;
+      }
       const bindingEl = document.getElementById('price-binding');
       if (bindingEl) bindingEl.innerText = formatCurrency(totalBinding);
 
@@ -588,6 +697,18 @@ export const PublicViews = {
       const qrPayableEl = document.getElementById('qr-payable-amount');
       if (qrPayableEl) qrPayableEl.innerText = formatCurrency(total);
 
+      const instructionsAmountEl = document.getElementById('instructions-amount');
+      if (instructionsAmountEl) instructionsAmountEl.innerText = formatCurrency(total);
+
+      const merchantUpi = settings.upiId || '9789123456@upi';
+      const merchantName = settings.merchantName || settings.shopName || 'TEAM 7 SYSTEM SOLUTION';
+      const upiString = `upi://pay?pa=${encodeURIComponent(merchantUpi)}&pn=${encodeURIComponent(merchantName)}&am=${total.toFixed(2)}&cu=INR&tn=${encodeURIComponent('Print Order Payment')}`;
+
+      const qrBox = document.getElementById('upi-qr-canvas-box');
+      if (qrBox) {
+        renderUpiQrCode(qrBox, upiString, total.toFixed(2));
+      }
+
       const fileCountText = document.getElementById('summary-file-count');
       if (fileCountText) {
         const totalPages = state.files.reduce((a, f) => a + f.pages, 0);
@@ -597,6 +718,31 @@ export const PublicViews = {
       }
       return quote;
     };
+
+    function renderUpiQrCode(containerEl, upiString, amount) {
+      if (!containerEl) return;
+
+      const encodedData = encodeURIComponent(upiString);
+      const primaryQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodedData}&margin=8`;
+      const fallbackQrUrl = `https://quickchart.io/qr?text=${encodedData}&size=220&margin=2`;
+
+      containerEl.innerHTML = `
+        <div style="text-align:center;">
+          <div style="position:relative; display:inline-block; padding:10px; background:white; border-radius:14px; border:2px solid var(--primary); box-shadow:var(--shadow-md);">
+            <img src="${primaryQrUrl}" alt="UPI QR Code for ₹${amount}" style="width:180px; height:180px; display:block; border-radius:8px;" 
+              onerror="this.onerror=null; this.src='${fallbackQrUrl}';" />
+            <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:white; padding:4px 8px; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.2); border:1.5px solid #cbd5e1; font-weight:800; font-size:0.75rem; color:var(--primary); font-family:sans-serif;">
+              UPI
+            </div>
+          </div>
+          <div style="margin-top:0.85rem;">
+            <a href="${upiString}" class="btn btn-sm btn-primary glow-effect" style="font-size:0.8rem; padding:0.45rem 0.9rem; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
+              📱 Pay with GPay / PhonePe / Paytm ➔
+            </a>
+          </div>
+        </div>
+      `;
+    }
 
     const deliverySelect = document.getElementById('cust-delivery-zone');
     if (deliverySelect) {
@@ -647,44 +793,136 @@ export const PublicViews = {
     }
 
     // Default print options template
-    const defaultFileOptions = () => ({
+    const defaultFileOptions = (totalPages = 1) => ({
       paperSize: Object.keys(pricing.paperSizes)[0] || 'A4',
-      paperQuality: Object.keys(pricing.paperQualities)[0] || '70GSM',
+      paperQuality: Object.keys(pricing.paperQualities)[0] || '70 GSM',
       colorMode: 'Black & White',
       printSide: 'Single',
       orientation: 'Portrait',
       copies: 1,
       binding: 'None',
       lamination: 'No',
+      pageRange: `1-${totalPages}`,
+      colorPageRange: '',
       notes: ''
     });
 
     async function handleFiles(fileList) {
-      for (let file of Array.from(fileList)) {
+      const filesArray = Array.from(fileList);
+      if (filesArray.length === 0) return;
+
+      const validFiles = filesArray.filter(file => {
         if (!file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
           NotificationService.showToast(`${file.name} is not a PDF file. Only PDF accepted!`, 'error');
-          continue;
+          return false;
         }
         if (file.size > 200 * 1024 * 1024) {
           NotificationService.showToast(`File ${file.name} exceeds 200MB limit!`, 'error');
-          continue;
+          return false;
         }
+        return true;
+      });
+
+      if (validFiles.length === 0) return;
+
+      // Locate or create status container above file preview
+      let statusBox = document.getElementById('upload-status-box');
+      if (!statusBox) {
+        const previewContainer = document.getElementById('file-list-preview');
+        statusBox = document.createElement('div');
+        statusBox.id = 'upload-status-box';
+        statusBox.style.marginTop = '1.25rem';
+        if (previewContainer && previewContainer.parentNode) {
+          previewContainer.parentNode.insertBefore(statusBox, previewContainer);
+        }
+      }
+
+      // Step 1: Render Animated Processing Screen
+      statusBox.innerHTML = `
+        <div style="background:var(--bg-card); border:2px dashed var(--primary); border-radius:14px; padding:1.5rem; text-align:center; box-shadow:var(--shadow-md);" class="animate-fade-in">
+          <div style="display:inline-block; font-size:2.75rem; margin-bottom:0.5rem; animation: spin 1.5s linear infinite;">⚙️</div>
+          <h4 style="font-size:1.15rem; font-weight:700; color:var(--primary); margin-bottom:0.25rem;">Processing & Scanning PDF Files...</h4>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">Reading page count, parsing PDF structure & storing locally for high-speed printing...</p>
+          
+          <!-- Animated Progress Bar -->
+          <div style="width:100%; height:12px; background:var(--bg-body); border-radius:20px; overflow:hidden; border:1px solid var(--border-color); margin-bottom:0.75rem;">
+            <div id="pdf-progress-bar" style="width: 20%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); transition: width 0.25s ease;"></div>
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:600; color:var(--text-muted);">
+            <span id="pdf-progress-text">Processing: ${validFiles[0].name}...</span>
+            <span id="pdf-progress-percent">20%</span>
+          </div>
+        </div>
+      `;
+
+      const updateProgress = (pct, filename) => {
+        const bar = document.getElementById('pdf-progress-bar');
+        const txt = document.getElementById('pdf-progress-text');
+        const perc = document.getElementById('pdf-progress-percent');
+        if (bar) bar.style.width = pct + '%';
+        if (txt && filename) txt.innerText = `Processing: ${filename}...`;
+        if (perc) perc.innerText = pct + '%';
+      };
+
+      let newlyUploadedCount = 0;
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        const progressBase = Math.round(((i) / validFiles.length) * 100);
+        updateProgress(Math.max(25, progressBase), file.name);
+
         try {
+          // Brief pause for visual progress animation
+          await new Promise(r => setTimeout(r, 200));
           const estPages = await StorageService.estimatePdfPages(file);
+
+          updateProgress(Math.min(90, progressBase + 60), file.name);
           const uploaded = await StorageService.uploadFile(file, 'customer_docs');
+
           state.files.push({
             name: file.name,
             size: uploaded.size || 'N/A',
             url: uploaded.url || '',
+            idbKey: uploaded.idbKey || '',
             pages: estPages || 1,
-            options: defaultFileOptions()
+            options: defaultFileOptions(estPages || 1)
           });
-          NotificationService.showToast(`Uploaded ${file.name}`, 'success');
+          newlyUploadedCount++;
         } catch (err) {
           console.error('File processing error:', err);
           NotificationService.showToast(`Failed to process ${file.name}`, 'error');
         }
       }
+
+      updateProgress(100, 'Finalizing upload...');
+      await new Promise(r => setTimeout(r, 250));
+
+      // Step 2: Render PDF Upload Successful Screen
+      const lastUploadedFile = state.files[state.files.length - 1];
+      statusBox.innerHTML = `
+        <div style="background:linear-gradient(135deg, rgba(16,185,129,0.14) 0%, rgba(5,150,105,0.08) 100%); border:2px solid #10b981; border-radius:14px; padding:1.25rem 1.5rem; box-shadow:0 6px 20px rgba(16,185,129,0.18); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;" class="animate-fade-in">
+          <div style="display:flex; align-items:center; gap:1rem;">
+            <div style="width:48px; height:48px; background:#10b981; color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.75rem; font-weight:bold; box-shadow:0 4px 14px rgba(16,185,129,0.4); flex-shrink:0;">
+              ✓
+            </div>
+            <div>
+              <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                <h4 style="font-size:1.15rem; font-weight:800; color:#10b981; margin:0;">PDF Upload Successful!</h4>
+                <span style="background:#10b981; color:white; font-size:0.75rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:12px;">Verified & Ready ✓</span>
+              </div>
+              <p style="font-size:0.875rem; color:var(--text-main); margin-top:0.25rem;">
+                <b>${newlyUploadedCount} PDF file(s)</b> uploaded & verified (~${lastUploadedFile ? lastUploadedFile.pages : 1} total pages).
+              </p>
+            </div>
+          </div>
+          <div style="font-size:0.82rem; font-weight:700; color:#10b981; background:rgba(16,185,129,0.18); padding:0.55rem 1rem; border-radius:10px; border:1px solid rgba(16,185,129,0.35);">
+            📄 Configure Print Options Below 👇
+          </div>
+        </div>
+      `;
+
+      NotificationService.showToast(`PDF Uploaded Successfully!`, 'success');
+
       state.totalPages = state.files.reduce((acc, f) => acc + f.pages, 0) || 1;
       renderFileList();
       updateCalculations();
@@ -700,14 +938,19 @@ export const PublicViews = {
       const paperSizeOptions = Object.entries(pricing.paperSizes).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('');
       const paperQualityOptions = Object.entries(pricing.paperQualities).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('');
 
-      container.innerHTML = state.files.map((f, idx) => `
-        <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; overflow:hidden;">
+      container.innerHTML = state.files.map((f, idx) => {
+        const fileQuote = PricingEngine.calculateQuote(f.options, f.pages);
+        return `
+        <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; overflow:hidden; margin-bottom:1rem;">
           <!-- File Header -->
           <div style="display:flex; justify-content:space-between; align-items:center; padding:0.85rem 1rem; background:var(--primary-light); cursor:pointer;" onclick="window.toggleFileOptions(${idx})">
             <div style="display:flex; align-items:center; gap:0.6rem;">
               <span style="font-size:1.3rem;">📄</span>
               <div>
-                <div style="font-weight:700; font-size:0.9rem;">${f.name}</div>
+                <div style="font-weight:700; font-size:0.9rem; display:flex; align-items:center; gap:0.5rem;">
+                  ${f.name}
+                  <span style="background:rgba(16,185,129,0.18); color:#10b981; font-weight:700; font-size:0.7rem; padding:0.15rem 0.5rem; border-radius:10px; border:1px solid rgba(16,185,129,0.4);">✓ Uploaded</span>
+                </div>
                 <div style="font-size:0.75rem; color:var(--text-muted);">${f.size} &nbsp;•&nbsp; ~${f.pages} page(s)</div>
               </div>
             </div>
@@ -721,66 +964,110 @@ export const PublicViews = {
           <div id="file-options-${idx}" style="padding:1rem 1.25rem; border-top:1px solid var(--border-color);">
             <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:0.85rem; margin-bottom:0.85rem;">
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Paper Size</label>
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('calc_size')}</label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'paperSize',this.value)">
                   ${Object.entries(pricing.paperSizes).map(([k,v]) => `<option value="${k}" ${f.options.paperSize===k?'selected':''}>${v.label}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Paper Quality</label>
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('paper_quality')}</label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'paperQuality',this.value)">
                   ${Object.entries(pricing.paperQualities).map(([k,v]) => `<option value="${k}" ${f.options.paperQuality===k?'selected':''}>${v.label}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Color Mode</label>
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('calc_color')}</label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'colorMode',this.value)">
-                  <option value="Black & White" ${f.options.colorMode==='Black & White'?'selected':''}>Black &amp; White</option>
-                  <option value="Color" ${f.options.colorMode==='Color'?'selected':''}>Full Color</option>
+                  <option value="Black & White" ${f.options.colorMode==='Black & White'?'selected':''}>⬛ ${I18nService.t('color_bw')}</option>
+                  <option value="Color" ${f.options.colorMode==='Color'?'selected':''}>🎨 ${I18nService.t('color_full')}</option>
+                  <option value="Custom Split" ${f.options.colorMode==='Custom Split'?'selected':''}>🔀 ${I18nService.t('color_split')}</option>
                 </select>
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Print Side</label>
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('print_side')}</label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'printSide',this.value)">
-                  <option value="Single" ${f.options.printSide==='Single'?'selected':''}>Single Side</option>
-                  <option value="Double" ${f.options.printSide==='Double'?'selected':''}>Double Side</option>
+                  <option value="Single" ${f.options.printSide==='Single'?'selected':''}>${I18nService.t('single_side')}</option>
+                  <option value="Double" ${f.options.printSide==='Double'?'selected':''}>${I18nService.t('double_side')}</option>
                 </select>
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Orientation</label>
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('orientation')}</label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'orientation',this.value)">
-                  <option value="Portrait" ${f.options.orientation==='Portrait'?'selected':''}>Portrait</option>
-                  <option value="Landscape" ${f.options.orientation==='Landscape'?'selected':''}>Landscape</option>
+                  <option value="Portrait" ${f.options.orientation==='Portrait'?'selected':''}>${I18nService.t('portrait')}</option>
+                  <option value="Landscape" ${f.options.orientation==='Landscape'?'selected':''}>${I18nService.t('landscape')}</option>
                 </select>
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Copies</label>
-                <input type="number" class="form-control" style="font-size:0.82rem;" min="1" max="500" value="${f.options.copies}" onchange="window.updateFileOption(${idx},'copies',parseInt(this.value)||1)">
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('copies')}</label>
+                <input type="number" class="form-control" style="font-size:0.82rem;" min="1" max="500" value="${f.options.copies || 1}" onchange="window.updateFileOption(${idx},'copies',parseInt(this.value)||1)">
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Binding</label>
+                <label class="form-label" style="font-size:0.78rem; display:flex; justify-content:space-between; align-items:center;">
+                  <span>${I18nService.t('calc_binding')}</span>
+                  <button type="button" class="btn btn-sm btn-link" style="padding:0; border:none; background:none; font-size:0.7rem; color:var(--primary); text-decoration:underline; cursor:pointer;" onclick="window.showBindingInfoModal()" title="What is document binding?">
+                    ${I18nService.t('calc_what_is_binding')}
+                  </button>
+                </label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'binding',this.value)">
-                  <option value="None" ${f.options.binding==='None'?'selected':''}>No Binding</option>
-                  <option value="Spiral" ${f.options.binding==='Spiral'?'selected':''}>Spiral (₹35)</option>
-                  <option value="Soft" ${f.options.binding==='Soft'?'selected':''}>Soft Cover (₹65)</option>
-                  <option value="Hard" ${f.options.binding==='Hard'?'selected':''}>Hard Bound (₹140)</option>
+                  ${Object.entries(pricing.bindings || {}).map(([k, v]) => `
+                    <option value="${k}" ${f.options.binding===k?'selected':''}>${k} ${v.price > 0 ? `(₹${v.price})` : ''}</option>
+                  `).join('')}
                 </select>
               </div>
               <div class="form-group" style="margin:0;">
-                <label class="form-label" style="font-size:0.78rem;">Lamination</label>
+                <label class="form-label" style="font-size:0.78rem;">${I18nService.t('lamination_label')}</label>
                 <select class="form-select" style="font-size:0.82rem;" onchange="window.updateFileOption(${idx},'lamination',this.value)">
-                  <option value="No" ${f.options.lamination==='No'?'selected':''}>No Lamination</option>
-                  <option value="Yes" ${f.options.lamination==='Yes'?'selected':''}>Thermal (₹12/pg)</option>
+                  ${Object.entries(pricing.lamination || {}).map(([k, v]) => `
+                    <option value="${k}" ${f.options.lamination===k?'selected':''}>${v.label || k} ${v.pricePerPage > 0 ? `(₹${v.pricePerPage}/pg)` : ''}</option>
+                  `).join('')}
                 </select>
               </div>
             </div>
+
+            <!-- Page Range & Color/B&W Page Selector Box -->
+            <div style="background:var(--primary-light); padding:0.85rem 1rem; border-radius:10px; border:1px solid var(--border-color); margin-bottom:0.85rem; display:grid; grid-template-columns:1fr 1fr; gap:1rem; align-items:flex-start;">
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-size:0.78rem; font-weight:700; color:var(--primary);">
+                  📄 Pages to Print (Doc Total: ${f.pages} pgs)
+                </label>
+                <input type="text" class="form-control" style="font-size:0.82rem;" placeholder="E.g., 1-${f.pages} or 1, 3, 5-20" value="${f.options.pageRange !== undefined ? f.options.pageRange : `1-${f.pages}`}" oninput="window.updateFileOption(${idx},'pageRange',this.value)">
+                <span style="font-size:0.7rem; color:var(--text-muted); margin-top:0.2rem; display:block;">
+                  Enter page ranges to print (e.g. <code>1-${f.pages}</code> or <code>1-50</code>).
+                </span>
+              </div>
+
+              <div class="form-group" style="margin:0;">
+                <label class="form-label" style="font-size:0.78rem; font-weight:700; color:${f.options.colorMode === 'Custom Split' ? '#10b981' : 'var(--text-main)'};">
+                  🎨 Color Page Numbers / Ranges
+                </label>
+                <input type="text" class="form-control" style="font-size:0.82rem; ${f.options.colorMode === 'Custom Split' ? 'border-color:#10b981; box-shadow:0 0 0 2px rgba(16,185,129,0.2);' : ''}" placeholder="${f.options.colorMode === 'Color' ? 'All pages are Full Color' : f.options.colorMode === 'Black & White' ? 'All pages are Black & White' : 'E.g., 1, 5, 10-15'}" value="${f.options.colorPageRange || ''}" oninput="window.updateFileOption(${idx},'colorPageRange',this.value)">
+                <span style="font-size:0.7rem; color:var(--text-muted); margin-top:0.2rem; display:block;">
+                  Enter page numbers to print in <b>Color</b> (e.g. <code>1, 5, 10-15</code>). Others print in <b>B&amp;W</b>.
+                </span>
+              </div>
+            </div>
+
+            <!-- Per-File Live Price Calculation Breakdown -->
+            <div id="file-calc-breakdown-${idx}" style="background:var(--bg-card); border:1px solid var(--border-color); padding:0.65rem 0.85rem; border-radius:8px; font-size:0.8rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.85rem;">
+              <div>
+                <span style="font-weight:700; color:var(--text-main);">📊 Print Calculation:</span>
+                ${fileQuote.colorPagesCount > 0 ? `<span style="color:#10b981; font-weight:700; margin-left:0.4rem;">🎨 ${fileQuote.colorPagesCount} Color pgs (@ ${formatCurrency(fileQuote.colorPaperRate)})</span>` : ''}
+                ${fileQuote.bwPagesCount > 0 ? `<span style="color:var(--text-muted); font-weight:600; margin-left:0.4rem;">⬛ ${fileQuote.bwPagesCount} B&amp;W pgs (@ ${formatCurrency(fileQuote.basePaperRate)})</span>` : ''}
+                <span style="color:var(--text-muted); margin-left:0.3rem;">• ${f.options.copies || 1} copy(ies)</span>
+              </div>
+              <div style="font-weight:800; color:var(--primary); font-size:0.875rem;">
+                File Cost: ${formatCurrency(fileQuote.paperCost + fileQuote.colorCost + fileQuote.bindingCost + fileQuote.laminationCost)}
+              </div>
+            </div>
+
             <div class="form-group" style="margin:0;">
               <label class="form-label" style="font-size:0.78rem;">Special Instructions for this file</label>
-              <input type="text" class="form-control" style="font-size:0.82rem;" placeholder="E.g., Print page 1 in color only..." value="${f.options.notes}" oninput="window.updateFileOption(${idx},'notes',this.value)">
+              <input type="text" class="form-control" style="font-size:0.82rem;" placeholder="E.g., Print page 1 in color only..." value="${f.options.notes || ''}" oninput="window.updateFileOption(${idx},'notes',this.value)">
             </div>
           </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     window.toggleFileOptions = (idx) => {
@@ -792,9 +1079,102 @@ export const PublicViews = {
       if (label) label.textContent = isHidden ? '⚙️ Configure ▲' : '⚙️ Configure ▼';
     };
 
+    window.showBindingInfoModal = () => {
+      const pricing = PricingEngine.getPricingData();
+      const bindingsObj = pricing.bindings || DEFAULT_PRICING.bindings;
+
+      const modalHTML = `
+        <div style="font-size:0.92rem; line-height:1.6; color:var(--text-main);">
+          <p style="margin-bottom:1.1rem; color:var(--text-muted);">
+            <b>Document Binding</b> holds loose printed pages together into a neat, organized, and durable book, project report, or booklet.
+          </p>
+
+          <div style="display:flex; flex-direction:column; gap:0.85rem;">
+            ${Object.entries(bindingsObj).map(([name, item]) => {
+              let badgeColor = 'background:rgba(59,130,246,0.08); border:1.5px solid rgba(59,130,246,0.25);';
+              let titleColor = 'color:var(--primary);';
+              let icon = '🌀';
+
+              if (name.toLowerCase().includes('soft')) {
+                badgeColor = 'background:rgba(16,185,129,0.08); border:1.5px solid rgba(16,185,129,0.25);';
+                titleColor = 'color:#059669;';
+                icon = '📘';
+              } else if (name.toLowerCase().includes('hard') || name.toLowerCase().includes('thesis')) {
+                badgeColor = 'background:rgba(245,158,11,0.08); border:1.5px solid rgba(245,158,11,0.25);';
+                titleColor = 'color:#d97706;';
+                icon = '📕';
+              } else if (name === 'None') {
+                badgeColor = 'background:var(--bg-card); border:1px solid var(--border-color);';
+                titleColor = 'color:var(--text-muted);';
+                icon = '📄';
+              }
+
+              const descText = item.description || item.label || (
+                name === 'Spiral' ? 'Durable plastic spiral coil with clear transparent sheet on front & heavy cardstock back cover. Standard for lab manuals & reports.' :
+                name === 'Soft' ? 'Thermal glued spine with soft printed cardstock cover wrapping around the book. Clean paperback finish.' :
+                name === 'Hard' ? 'Heavy rigid hardboard cover with luxury gold foil embossed lettering on front & spine. Mandatory for university theses.' :
+                name === 'None' ? 'Loose printed sheets delivered in correct sequence without any binding.' : 'Custom document binding finish.'
+              );
+
+              return `
+                <div style="${badgeColor} padding:0.85rem 1rem; border-radius:10px;">
+                  <div style="font-weight:800; ${titleColor} font-size:0.95rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span>${icon} ${name} Binding</span>
+                    <span class="badge ${item.price > 0 ? 'badge-approved' : ''}" style="font-size:0.75rem;">${item.price > 0 ? formatCurrency(item.price) + ' / book' : 'Free (₹0.00)'}</span>
+                  </div>
+                  <div style="font-size:0.85rem; color:var(--text-main); margin-top:0.35rem; line-height:1.45;">
+                    ${descText}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          <div style="text-align:right; margin-top:1.25rem;">
+            <button type="button" class="btn btn-primary" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">Understood ✓</button>
+          </div>
+        </div>
+      `;
+
+      const modal = ModalComponent || window.ModalComponent;
+      if (modal) {
+        modal.show({
+          title: `📚 What is Document Binding?`,
+          bodyHTML: modalHTML,
+          width: '560px'
+        });
+      }
+    };
+
     window.updateFileOption = (idx, key, value) => {
       if (state.files[idx]) {
         state.files[idx].options[key] = value;
+
+        // Auto switch colorMode to Custom Split if typing in colorPageRange
+        if (key === 'colorPageRange' && value.trim() !== '' && state.files[idx].options.colorMode !== 'Custom Split') {
+          state.files[idx].options.colorMode = 'Custom Split';
+          const selectEls = document.querySelectorAll(`#file-options-${idx} select`);
+          if (selectEls && selectEls[2]) selectEls[2].value = 'Custom Split';
+        }
+
+        // Live update file price calculation breakdown
+        const calcBox = document.getElementById(`file-calc-breakdown-${idx}`);
+        if (calcBox && typeof PricingEngine !== 'undefined') {
+          const f = state.files[idx];
+          const fileQuote = PricingEngine.calculateQuote(f.options, f.pages);
+          calcBox.innerHTML = `
+            <div>
+              <span style="font-weight:700; color:var(--text-main);">📊 Print Calculation:</span>
+              ${fileQuote.colorPagesCount > 0 ? `<span style="color:#10b981; font-weight:700; margin-left:0.4rem;">🎨 ${fileQuote.colorPagesCount} Color pgs (@ ${formatCurrency(fileQuote.colorPaperRate)})</span>` : ''}
+              ${fileQuote.bwPagesCount > 0 ? `<span style="color:var(--text-muted); font-weight:600; margin-left:0.4rem;">⬛ ${fileQuote.bwPagesCount} B&amp;W pgs (@ ${formatCurrency(fileQuote.basePaperRate)})</span>` : ''}
+              <span style="color:var(--text-muted); margin-left:0.3rem;">• ${f.options.copies || 1} copy(ies)</span>
+            </div>
+            <div style="font-weight:800; color:var(--primary); font-size:0.875rem;">
+              File Cost: ${formatCurrency(fileQuote.paperCost + fileQuote.colorCost + fileQuote.bindingCost + fileQuote.laminationCost)}
+            </div>
+          `;
+        }
+
         updateCalculations();
       }
     };
@@ -802,6 +1182,10 @@ export const PublicViews = {
     window.removeWizardFile = (index) => {
       state.files.splice(index, 1);
       state.totalPages = state.files.reduce((acc, f) => acc + f.pages, 0) || 1;
+      if (state.files.length === 0) {
+        const box = document.getElementById('upload-status-box');
+        if (box) box.remove();
+      }
       renderFileList();
       updateCalculations();
     };
@@ -923,10 +1307,12 @@ export const PublicViews = {
 
         try {
           let screenshotUrl = '';
+          let screenshotIdbKey = '';
           if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
             try {
               const uploaded = await StorageService.uploadFile(screenshotInput.files[0], 'receipts');
               screenshotUrl = uploaded.url || '';
+              screenshotIdbKey = uploaded.idbKey || '';
             } catch (err) {
               console.warn('Screenshot processing failed, proceeding without screenshot:', err);
             }
@@ -939,7 +1325,14 @@ export const PublicViews = {
             customerPhone: custPhone,
             customerEmail: custEmail,
             customerAddress: custAddress,
-            files: state.files.map(f => ({ name: f.name, size: f.size, url: f.url, pages: f.pages, options: f.options })),
+            files: state.files.map(f => ({
+              name: f.name,
+              size: f.size,
+              url: f.url,
+              idbKey: f.idbKey || '',
+              pages: f.pages,
+              options: f.options
+            })),
             options: state.files.length > 0 ? state.files[0].options : {},
             pricing: quote,
             payment: {
@@ -947,6 +1340,7 @@ export const PublicViews = {
               utr: utr,
               payerName: payerName,
               screenshotUrl: screenshotUrl,
+              screenshotIdbKey: screenshotIdbKey,
               status: 'Waiting Verification'
             }
           });
@@ -974,15 +1368,15 @@ export const PublicViews = {
       <section style="padding: 4rem 0;">
         <div class="container" style="max-width:800px;">
           <div class="text-center mb-4">
-            <h1 style="font-size:2.5rem;">Track Your Order</h1>
-            <p class="text-muted">Enter your Order ID (e.g. ORD-2026-1001) or Mobile Phone Number.</p>
+            <h1 style="font-size:2.5rem;">${I18nService.t('track_title')}</h1>
+            <p class="text-muted">${I18nService.t('track_subtitle')}</p>
           </div>
 
           <!-- Search Box -->
           <div class="glass-panel" style="padding:1.5rem; margin-bottom:2rem;">
             <div style="display:flex; gap:0.75rem;">
-              <input type="text" class="form-control" id="track-search-input" placeholder="Enter Order ID or Mobile Number..." value="${paramId}">
-              <button class="btn btn-primary" id="btn-perform-track">Search Order</button>
+              <input type="text" class="form-control" id="track-search-input" placeholder="${I18nService.t('track_order_id')} / ${I18nService.t('track_phone')}..." value="${paramId}">
+              <button class="btn btn-primary" id="btn-perform-track">${I18nService.t('track_btn')}</button>
             </div>
           </div>
 
@@ -992,86 +1386,138 @@ export const PublicViews = {
       </section>
     `;
 
-    const searchAction = async () => {
-      const val = document.getElementById('track-search-input').value.trim();
+    const renderOrderTrackCard = (order) => {
+      const isCompleted = order.status === 'Completed';
+      const isReady = order.status === 'Ready for Pickup';
+      const isPrinting = order.status === 'Printing';
+      const isApproved = order.status === 'Payment Approved';
+
+      return `
+      <div class="glass-panel" style="padding:2rem; margin-bottom:1.5rem; border-left: 5px solid ${isCompleted ? '#10b981' : isReady ? '#3b82f6' : 'var(--primary)'}; shadow: var(--shadow-md);">
+        
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:1rem; margin-bottom:1.25rem; flex-wrap:wrap; gap:0.75rem;">
+          <div>
+            <div style="display:flex; align-items:center; gap:0.6rem;">
+              <h3 style="color:var(--primary); font-size:1.4rem; margin:0;">${order.id}</h3>
+              <span style="font-size:0.72rem; background:rgba(16,185,129,0.15); color:#059669; font-weight:700; padding:0.2rem 0.55rem; border-radius:12px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.3rem;">
+                <span style="display:inline-block; width:7px; height:7px; background:#10b981; border-radius:50%;"></span>
+                Live Sync Active
+              </span>
+            </div>
+            <p class="text-muted" style="font-size:0.85rem; margin-top:0.25rem;">Placed on: ${formatDate(order.createdAt)} at ${formatTime(order.createdAt)}</p>
+          </div>
+          <div>
+            ${getStatusBadgeHTML(order.status)}
+          </div>
+        </div>
+
+        <!-- Order Status Progress Flow Visualizer -->
+        <div style="margin:1.5rem 0;">
+          <h4 style="font-size:0.85rem; font-weight:700; color:var(--text-muted); margin-bottom:0.85rem; text-transform:uppercase; letter-spacing:0.5px;">Order Progression Timeline:</h4>
+          <div class="timeline">
+            <div class="timeline-item ${order.status !== 'Pending Payment' ? 'completed' : 'active'}">
+              <div class="timeline-icon">✓</div>
+              <div class="timeline-content">
+                <div style="font-weight:700;">Order Received & Verified</div>
+                <div style="font-size:0.8rem; color:var(--text-muted);">Payment submitted via UPI UTR: <code>${order.payment?.utr || 'N/A'}</code></div>
+              </div>
+            </div>
+
+            <div class="timeline-item ${['Payment Approved', 'Printing', 'Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : isApproved || isPrinting ? 'active' : ''}">
+              <div class="timeline-icon">${isPrinting ? '🖨️' : '💳'}</div>
+              <div class="timeline-content">
+                <div style="font-weight:700;">Payment Approved & Document Printing</div>
+                <div style="font-size:0.8rem; color:var(--text-muted);">${isPrinting ? '🖨️ Currently printing your document packages...' : 'Payment verified by shop desk'}</div>
+              </div>
+            </div>
+
+            <div class="timeline-item ${['Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : ''}">
+              <div class="timeline-icon">📦</div>
+              <div class="timeline-content">
+                <div style="font-weight:700;">${(order.pricing?.deliveryFee && order.pricing.deliveryFee > 0) ? 'Out for Delivery' : 'Ready for Store Pickup'}</div>
+                <div style="font-size:0.8rem; color:var(--text-muted);">${isCompleted ? '✅ Order Completed & Delivered!' : `Est. Ready: ${formatDate(order.estimatedReady)} at ${formatTime(order.estimatedReady)}`}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary info -->
+        <div style="background:var(--bg-card); padding:1rem 1.25rem; border-radius:10px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+          <div>
+            <span style="font-size:0.85rem; color:var(--text-muted);">Customer:</span> <b>${order.customerName || 'Customer'}</b> (${order.customerPhone || 'N/A'})
+            <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">
+              📄 ${order.files?.length || 1} file(s) attached • ${(order.files?.[0]?.options || order.options)?.paperSize || 'A4'} (${(order.files?.[0]?.options || order.options)?.colorMode || 'B&W'})
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <span style="font-size:0.85rem; color:var(--text-muted);">Grand Total:</span>
+            <div style="font-size:1.35rem; font-weight:800; color:var(--primary);">${formatCurrency(order.pricing?.total)}</div>
+          </div>
+        </div>
+      </div>
+      `;
+    };
+
+    const searchAction = async (isSilentUpdate = false) => {
+      const val = document.getElementById('track-search-input')?.value.trim();
       const container = document.getElementById('track-results-container');
+      if (!container) return;
 
       if (!val) {
-        container.innerHTML = `<div class="text-center text-muted">Please enter a search term above.</div>`;
+        if (!isSilentUpdate) {
+          container.innerHTML = `<div class="text-center text-muted">Please enter an Order ID or Mobile Number above.</div>`;
+        }
         return;
       }
 
       const results = await DBService.searchOrders(val);
       if (results.length === 0) {
-        container.innerHTML = `
-          <div class="glass-panel text-center" style="padding:2.5rem;">
-            <div style="font-size:3rem;">🔍</div>
-            <h3>No orders found</h3>
-            <p class="text-muted" style="margin-top:0.5rem;">We couldn't find any order matching "${val}". Please check the ID or Phone number.</p>
-          </div>
-        `;
+        if (!isSilentUpdate) {
+          container.innerHTML = `
+            <div class="glass-panel text-center" style="padding:2.5rem;">
+              <div style="font-size:3rem;">🔍</div>
+              <h3>No orders found</h3>
+              <p class="text-muted" style="margin-top:0.5rem;">We couldn't find any order matching "${val}". Please check the ID or Phone number.</p>
+            </div>
+          `;
+        }
         return;
       }
 
-      container.innerHTML = results.map(order => `
-        <div class="glass-panel" style="padding:2rem; margin-bottom:1.5rem;">
-          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:1rem; margin-bottom:1.25rem;">
-            <div>
-              <h3 style="color:var(--primary); font-size:1.4rem;">${order.id}</h3>
-              <p class="text-muted" style="font-size:0.85rem;">Placed on: ${formatDate(order.createdAt)} at ${formatTime(order.createdAt)}</p>
-            </div>
-            <div>
-              ${getStatusBadgeHTML(order.status)}
-            </div>
-          </div>
+      // Check if status changed compared to previous render
+      let statusChanged = false;
+      results.forEach(freshOrder => {
+        const lastStatus = window._lastTrackedStatuses ? window._lastTrackedStatuses[freshOrder.id] : null;
+        if (lastStatus && lastStatus !== freshOrder.status) {
+          statusChanged = true;
+          NotificationService.showToast(`🔔 Status Update: Order ${freshOrder.id} is now '${freshOrder.status}'!`, 'success');
+        }
+        if (!window._lastTrackedStatuses) window._lastTrackedStatuses = {};
+        window._lastTrackedStatuses[freshOrder.id] = freshOrder.status;
+      });
 
-          <!-- Order Status Progress Flow Visualizer -->
-          <div style="margin:1.5rem 0;">
-            <h4 style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0.75rem; text-transform:uppercase;">Order Progression Timeline:</h4>
-            <div class="timeline">
-              <div class="timeline-item ${order.status !== 'Pending Payment' ? 'completed' : 'active'}">
-                <div class="timeline-icon">✓</div>
-                <div class="timeline-content">
-                  <div style="font-weight:700;">Waiting Verification</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted);">Payment submitted via UPI UTR: ${order.payment?.utr || 'N/A'}</div>
-                </div>
-              </div>
-
-              <div class="timeline-item ${['Payment Approved', 'Printing', 'Quality Check', 'Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : ''}">
-                <div class="timeline-icon">⚙️</div>
-                <div class="timeline-content">
-                  <div style="font-weight:700;">Payment Approved & Printing</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted);">Print queue processing</div>
-                </div>
-              </div>
-
-              <div class="timeline-item ${['Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : ''}">
-                <div class="timeline-icon">📦</div>
-                <div class="timeline-content">
-                  <div style="font-weight:700;">Ready for Pickup / Delivery</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted);">Est. Ready: ${formatDate(order.estimatedReady)} at ${formatTime(order.estimatedReady)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Summary info -->
-          <div style="background:var(--bg-card); padding:1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <span style="font-size:0.85rem; color:var(--text-muted);">Customer:</span> <b>${order.customerName}</b> (${order.customerPhone})
-              <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.2rem;">${order.files?.length || 0} document(s) attached • ${order.options?.paperSize} (${order.options?.colorMode})</div>
-            </div>
-            <div style="text-align:right;">
-              <span style="font-size:0.85rem; color:var(--text-muted);">Total Amount:</span>
-              <div style="font-size:1.3rem; font-weight:800; color:var(--primary);">${formatCurrency(order.pricing?.total)}</div>
-            </div>
-          </div>
-        </div>
-      `).join('');
+      if (!isSilentUpdate || statusChanged || !container.innerHTML.includes(results[0].id)) {
+        container.innerHTML = results.map(order => renderOrderTrackCard(order)).join('');
+      }
     };
 
-    document.getElementById('btn-perform-track').onclick = searchAction;
-    if (paramId) searchAction();
+    const searchBtn = document.getElementById('btn-perform-track');
+    if (searchBtn) searchBtn.onclick = () => searchAction(false);
+    if (paramId) searchAction(false);
+
+    // --- LIVE REFRESH SYNC TIMER FOR TRACK ORDER PAGE (3-second Polling) ---
+    if (window._trackOrderSyncTimer) {
+      clearInterval(window._trackOrderSyncTimer);
+    }
+
+    window._trackOrderSyncTimer = setInterval(() => {
+      if (!window.location.hash.startsWith('#track')) {
+        clearInterval(window._trackOrderSyncTimer);
+        window._trackOrderSyncTimer = null;
+        return;
+      }
+      searchAction(true);
+    }, 3000);
   },
 
   // --- FAQ PAGE ---
@@ -1081,8 +1527,8 @@ export const PublicViews = {
       <section style="padding: 4rem 0;">
         <div class="container" style="max-width:800px;">
           <div class="text-center mb-4">
-            <h1 style="font-size:2.5rem;">Frequently Asked Questions</h1>
-            <p class="text-muted">Find quick answers to common questions regarding document printing, payment, and delivery.</p>
+            <h1 style="font-size:2.5rem;">${I18nService.t('faq_heading')}</h1>
+            <p class="text-muted">${I18nService.t('faq_subheading')}</p>
           </div>
 
           <div style="display:flex; flex-direction:column; gap:1.25rem;">
@@ -1106,8 +1552,8 @@ export const PublicViews = {
       <section style="padding: 4rem 0;">
         <div class="container">
           <div class="text-center mb-4">
-            <h1 style="font-size:2.5rem;">Contact ${settings.shopName}</h1>
-            <p class="text-muted">Have a special bulk print inquiry? Reach out to our customer support team.</p>
+            <h1 style="font-size:2.5rem;">${I18nService.t('contact_heading')}</h1>
+            <p class="text-muted">${I18nService.t('contact_subheading')}</p>
           </div>
 
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:3rem;">
@@ -1121,8 +1567,16 @@ export const PublicViews = {
                 </div>
 
                 <div>
-                  <h4 style="font-size:0.9rem; color:var(--text-muted); text-transform:uppercase;">Phone Numbers</h4>
-                  <p style="font-weight:600; margin-top:0.25rem;">${settings.phone} / ${settings.altPhone}</p>
+                  <h4 style="font-size:0.9rem; color:var(--text-muted); text-transform:uppercase;">Support Call Phone</h4>
+                  <p style="font-weight:600; margin-top:0.25rem;">${settings.phone} ${settings.altPhone ? `/ ${settings.altPhone}` : ''}</p>
+                </div>
+
+                <div style="background:rgba(16,185,129,0.1); border:1.5px solid rgba(16,185,129,0.35); padding:1rem 1.15rem; border-radius:10px;">
+                  <h4 style="font-size:0.85rem; color:#059669; text-transform:uppercase; font-weight:800; margin:0;">💬 Direct WhatsApp Business</h4>
+                  <p style="font-weight:800; font-size:1.05rem; margin-top:0.35rem; color:var(--text-main);">${settings.whatsappNumber || settings.phone}</p>
+                  <a href="https://wa.me/${((settings.whatsappNumber || settings.phone || '').replace(/\D/g,'').length === 10 ? '91' : '') + (settings.whatsappNumber || settings.phone || '').replace(/\D/g,'')}?text=${encodeURIComponent(`Hi ${settings.shopName || 'Team 7'}! I would like to inquire about printing.`)}" target="_blank" class="btn btn-sm btn-success mt-2" style="display:inline-flex; align-items:center; gap:0.4rem; font-weight:700;">
+                    💬 Open WhatsApp Chat
+                  </a>
                 </div>
 
                 <div>

@@ -135,6 +135,29 @@ export const DBService = {
     return orders.find(o => o.id === orderId) || null;
   },
 
+  // Sanitize order payload to prevent quota/payload errors on heavy base64 data
+  sanitizeOrderForStorage(order) {
+    if (!order) return order;
+    try {
+      const cleanOrder = JSON.parse(JSON.stringify(order));
+      if (cleanOrder.files && Array.isArray(cleanOrder.files)) {
+        cleanOrder.files.forEach(f => {
+          if (f.url && f.url.startsWith('data:') && f.url.length > 50000) {
+            f.url = f.idbKey ? ('idb://' + f.idbKey) : '';
+          }
+        });
+      }
+      if (cleanOrder.payment && cleanOrder.payment.screenshotUrl && cleanOrder.payment.screenshotUrl.startsWith('data:') && cleanOrder.payment.screenshotUrl.length > 50000) {
+        if (cleanOrder.payment.screenshotIdbKey) {
+          cleanOrder.payment.screenshotUrl = 'idb://' + cleanOrder.payment.screenshotIdbKey;
+        }
+      }
+      return cleanOrder;
+    } catch (e) {
+      return order;
+    }
+  },
+
   // Create new Order
   async createOrder(orderData) {
     this.initLocalStore();
@@ -147,11 +170,12 @@ export const DBService = {
       estimatedReady: new Date(Date.now() + 4 * 3600 * 1000).toISOString()
     };
 
-    // Save Local
+    // Save Local safely
     try {
       const orders = await this.getOrders();
       orders.unshift(newOrder);
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      const cleanOrders = orders.map(o => this.sanitizeOrderForStorage(o));
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
     } catch (err) {
       console.warn("Local storage save error:", err);
     }
@@ -161,7 +185,8 @@ export const DBService = {
     if (!isDemo && db) {
       try {
         const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-        await setDoc(doc(db, "orders", newId), newOrder);
+        const firestoreOrder = this.sanitizeOrderForStorage(newOrder);
+        await setDoc(doc(db, "orders", newId), firestoreOrder);
       } catch (err) {
         console.warn("Firestore order insert error:", err);
       }
@@ -171,22 +196,41 @@ export const DBService = {
   },
 
   // Update order status (Admin operation)
-  async updateOrderStatus(orderId, newStatus) {
+  async updateOrderStatus(orderId, newStatus, isLocked = null) {
     const orders = await this.getOrders();
     const index = orders.findIndex(o => o.id === orderId);
     if (index !== -1) {
       orders[index].status = newStatus;
+      if (isLocked !== null) {
+        orders[index].isStatusLocked = isLocked;
+      } else if (newStatus === 'Completed' || newStatus === 'Rejected') {
+        orders[index].isStatusLocked = true;
+      }
       if (newStatus === 'Payment Approved' && orders[index].payment) {
         orders[index].payment.status = 'Verified';
       }
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      if (newStatus === 'Completed' || newStatus === 'Rejected') {
+        try {
+          const { StorageService } = await import('./storage-service.js');
+          StorageService.deleteOrderFiles(orders[index]);
+        } catch (e) {}
+      }
+
+      const cleanOrders = orders.map(o => this.sanitizeOrderForStorage(o));
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
 
       const { db, isDemo } = getServices();
       if (!isDemo && db) {
         try {
           const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-          await updateDoc(doc(db, "orders", orderId), { status: newStatus });
-        } catch (e) {}
+          const updateObj = { status: newStatus };
+          if (orders[index].isStatusLocked !== undefined) {
+            updateObj.isStatusLocked = orders[index].isStatusLocked;
+          }
+          await updateDoc(doc(db, "orders", orderId), updateObj);
+        } catch (e) {
+          console.warn("Firestore status update error:", e);
+        }
       }
       return orders[index];
     }
@@ -196,6 +240,13 @@ export const DBService = {
   // Delete Order (Admin operation)
   async deleteOrder(orderId) {
     let orders = await this.getOrders();
+    const target = orders.find(o => o.id === orderId);
+    if (target) {
+      try {
+        const { StorageService } = await import('./storage-service.js');
+        StorageService.deleteOrderFiles(target);
+      } catch (e) {}
+    }
     orders = orders.filter(o => o.id !== orderId);
     localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 

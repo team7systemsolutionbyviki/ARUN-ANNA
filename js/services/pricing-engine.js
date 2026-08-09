@@ -25,7 +25,44 @@ export const PricingEngine = {
     localStorage.setItem('team7_pricing', JSON.stringify(newPricing));
   },
 
-  // Calculate order quote instantly
+  // Parse page range strings e.g. "1-5, 10, 15-20" or "All"
+  parsePageRanges(rangeStr, maxPages = 1) {
+    if (!rangeStr || typeof rangeStr !== 'string') return new Set();
+    const clean = rangeStr.trim();
+    if (!clean || clean.toLowerCase() === 'all') {
+      const s = new Set();
+      for (let i = 1; i <= maxPages; i++) s.add(i);
+      return s;
+    }
+
+    const pageSet = new Set();
+    const parts = clean.split(/[,;\s]+/);
+
+    for (let part of parts) {
+      if (!part) continue;
+      if (part.includes('-')) {
+        const [startStr, endStr] = part.split('-');
+        let start = parseInt(startStr, 10);
+        let end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end)) {
+          if (start > end) [start, end] = [end, start];
+          start = Math.max(1, start);
+          end = Math.min(maxPages, end);
+          for (let p = start; p <= end; p++) {
+            pageSet.add(p);
+          }
+        }
+      } else {
+        const p = parseInt(part, 10);
+        if (!isNaN(p) && p >= 1 && p <= maxPages) {
+          pageSet.add(p);
+        }
+      }
+    }
+    return pageSet;
+  },
+
+  // Calculate order quote instantly with per-page color & B&W range support
   calculateQuote(options = {}, totalPages = 1) {
     const pricing = this.getPricingData();
 
@@ -38,22 +75,48 @@ export const PricingEngine = {
     const lamination = options.lamination || 'No';
     const deliveryZone = options.deliveryZone || 'Pickup';
 
-    const isColor = colorMode === 'Color';
+    const maxDocPages = Math.max(1, parseInt(totalPages) || 1);
 
-    // Base rate from paper size + quality + side
+    // 1. Determine which pages are printed
+    const printPagesSet = this.parsePageRanges(options.pageRange || 'All', maxDocPages);
+    const printedPagesCount = printPagesSet.size > 0 ? printPagesSet.size : maxDocPages;
+
+    // 2. Determine Color vs B&W pages count
+    let colorPagesCount = 0;
+    let bwPagesCount = 0;
+
+    if (colorMode === 'Color') {
+      colorPagesCount = printedPagesCount;
+      bwPagesCount = 0;
+    } else if (colorMode === 'Black & White') {
+      colorPagesCount = 0;
+      bwPagesCount = printedPagesCount;
+    } else {
+      // Custom Range / Mixed Mode
+      const explicitColorSet = this.parsePageRanges(options.colorPageRange || '', maxDocPages);
+      // Count how many selected print pages overlap with color set
+      for (const p of printPagesSet) {
+        if (explicitColorSet.has(p)) {
+          colorPagesCount++;
+        }
+      }
+      bwPagesCount = Math.max(0, printedPagesCount - colorPagesCount);
+    }
+
+    // Base rates
     const sizeConfig = pricing.paperSizes[paperSize] || { baseRate: 1.50 };
     const qualityConfig = pricing.paperQualities[paperQuality] || { multiplier: 1.0 };
     const sideConfig = pricing.sides[printSide] || { multiplier: 1.0 };
-    const colorConfig = pricing.colorModes[colorMode] || { costPerPage: 1.50 };
+
+    const colorExtraRate = (pricing.colorModes['Color']?.costPerPage) || 1.50;
 
     const basePaperRate = sizeConfig.baseRate * qualityConfig.multiplier * sideConfig.multiplier;
-    // Total per-page rate includes the color/bw cost per page
-    const totalRatePerPage = basePaperRate + (colorConfig.costPerPage || 0);
-    const totalPrintCost = Number((totalRatePerPage * totalPages * copies).toFixed(2));
+    const colorPaperRate = basePaperRate + colorExtraRate;
 
-    // Route the full print cost into either paperCost (B&W) or colorCost (Color)
-    const paperCost = isColor ? 0 : totalPrintCost;
-    const colorCost = isColor ? totalPrintCost : 0;
+    // Calculations
+    const paperCost = Number((bwPagesCount * basePaperRate * copies).toFixed(2));
+    const colorCost = Number((colorPagesCount * colorPaperRate * copies).toFixed(2));
+    const totalPrintCost = Number((paperCost + colorCost).toFixed(2));
 
     // Binding Cost
     const bindingConfig = pricing.bindings[binding] || { price: 0 };
@@ -61,7 +124,7 @@ export const PricingEngine = {
 
     // Lamination Cost
     const laminationConfig = pricing.lamination[lamination] || { pricePerPage: 0 };
-    const laminationCost = Number((laminationConfig.pricePerPage * totalPages * copies).toFixed(2));
+    const laminationCost = Number((laminationConfig.pricePerPage * printedPagesCount * copies).toFixed(2));
 
     // Area-Wise Delivery Fee
     const deliveryZones = pricing.deliveryZones || DEFAULT_PRICING.deliveryZones;
@@ -88,7 +151,12 @@ export const PricingEngine = {
       gst: 0,
       discount,
       total,
-      totalPages,
+      totalPages: maxDocPages,
+      printedPagesCount,
+      colorPagesCount,
+      bwPagesCount,
+      basePaperRate,
+      colorPaperRate,
       copies
     };
   }

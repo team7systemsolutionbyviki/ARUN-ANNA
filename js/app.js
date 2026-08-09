@@ -11,9 +11,33 @@ import { CustomerViews } from './views/customer-views.js';
 import { DBService } from './services/db-service.js';
 import { ModalComponent } from './components/modal.js';
 import { NotificationService } from './services/notification-service.js';
+import { I18nService } from './services/i18n-service.js';
 
 window.ModalComponent = ModalComponent;
 window.NotificationService = NotificationService;
+window.I18nService = I18nService;
+
+window.updateFloatingButtons = async () => {
+  try {
+    const settings = await DBService.getSettings();
+    const rawWa = (settings.whatsappNumber || settings.phone || '919789123456').replace(/\D/g, '');
+    const cleanWa = rawWa.length === 10 ? '91' + rawWa : rawWa;
+    
+    const waBtn = document.getElementById('floating-whatsapp-btn');
+    if (waBtn) {
+      waBtn.href = `https://wa.me/${cleanWa}?text=${encodeURIComponent(`Hi ${settings.shopName || 'TEAM 7 SYSTEM SOLUTION'}! I have a printing inquiry.`)}`;
+    }
+
+    const rawPhone = (settings.phone || '9789123456').replace(/\D/g, '');
+    const cleanCall = rawPhone.length === 10 ? '+91' + rawPhone : '+' + rawPhone;
+    const callBtn = document.getElementById('floating-call-btn');
+    if (callBtn) {
+      callBtn.href = `tel:${cleanCall}`;
+    }
+  } catch (e) {
+    console.warn('Update floating buttons error:', e);
+  }
+};
 
 const initApp = async () => {
   try {
@@ -23,10 +47,19 @@ const initApp = async () => {
     console.warn('Init store warning:', e);
   }
 
+  // Register I18n Language Change Listener
+  I18nService.onChange(() => {
+    NavbarComponent.render();
+    Router.handleRoute();
+  });
+
+  // Update floating buttons on load
+  window.updateFloatingButtons();
+
   // Register All SPA Routes
-  Router.register('home', (q) => { NavbarComponent.render(); PublicViews.renderHome(q); });
-  Router.register('services', (q) => { NavbarComponent.render(); PublicViews.renderServices(q); });
-  Router.register('pricing', (q) => { NavbarComponent.render(); PublicViews.renderPriceList(q); });
+  Router.register('home', (q) => { NavbarComponent.render(); PublicViews.renderHome(q); window.updateFloatingButtons(); });
+  Router.register('services', (q) => { NavbarComponent.render(); PublicViews.renderServices(q); window.updateFloatingButtons(); });
+  Router.register('pricing', (q) => { NavbarComponent.render(); PublicViews.renderPriceList(q); window.updateFloatingButtons(); });
   Router.register('how-it-works', async (q) => { 
     NavbarComponent.render(); 
     await PublicViews.renderHome(q); 
@@ -34,11 +67,12 @@ const initApp = async () => {
       const el = document.getElementById('how-it-works-section');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+    window.updateFloatingButtons();
   });
-  Router.register('faq', (q) => { NavbarComponent.render(); PublicViews.renderFAQ(q); });
-  Router.register('order', (q) => { NavbarComponent.render(); PublicViews.renderOrderPrint(q); });
-  Router.register('track', (q) => { NavbarComponent.render(); PublicViews.renderTrackOrder(q); });
-  Router.register('contact', (q) => { NavbarComponent.render(); PublicViews.renderContact(q); });
+  Router.register('faq', (q) => { NavbarComponent.render(); PublicViews.renderFAQ(q); window.updateFloatingButtons(); });
+  Router.register('order', (q) => { NavbarComponent.render(); PublicViews.renderOrderPrint(q); window.updateFloatingButtons(); });
+  Router.register('track', (q) => { NavbarComponent.render(); PublicViews.renderTrackOrder(q); window.updateFloatingButtons(); });
+  Router.register('contact', (q) => { NavbarComponent.render(); PublicViews.renderContact(q); window.updateFloatingButtons(); });
 
   // Admin Routes
   Router.register('admin-login', (q) => { NavbarComponent.render(); AdminViews.renderLogin(q); });

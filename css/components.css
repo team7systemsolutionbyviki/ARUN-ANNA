@@ -349,3 +349,115 @@ textarea.form-control {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* --- Language Switcher Dropdown --- */
+.lang-switcher-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.lang-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.lang-switcher-btn:hover,
+.lang-switcher-btn:focus-visible {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+  outline: none;
+}
+
+.lang-switcher-btn .lang-flag {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.lang-switcher-btn .lang-arrow {
+  font-size: 0.65rem;
+  transition: transform var(--transition-fast);
+  color: var(--text-muted);
+}
+
+.lang-switcher-wrapper.open .lang-arrow {
+  transform: rotate(180deg);
+}
+
+.lang-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 0.35rem 0;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.96);
+  transition: opacity var(--transition-fast), transform var(--transition-fast), visibility var(--transition-fast);
+}
+
+.lang-switcher-wrapper.open .lang-dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.lang-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.lang-option-item:hover,
+.lang-option-item:focus-visible {
+  background: var(--primary-light);
+  color: var(--primary);
+  outline: none;
+}
+
+.lang-option-item.active {
+  color: var(--primary);
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.lang-option-item .lang-check {
+  font-size: 0.8rem;
+  color: var(--primary);
+  font-weight: bold;
+}
+
+@media (max-width: 768px) {
+  .lang-switcher-btn .lang-name {
+    font-size: 0.8rem;
+  }
+  .lang-switcher-btn {
+    padding: 0.35rem 0.6rem;
+  }
+}

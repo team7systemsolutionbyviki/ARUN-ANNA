@@ -4,6 +4,7 @@
 
 import { AuthService } from '../services/auth-service.js';
 import { DBService } from '../services/db-service.js';
+import { StorageService } from '../services/storage-service.js';
 import { PricingEngine } from '../services/pricing-engine.js';
 import { NotificationService } from '../services/notification-service.js';
 import { ChartsEngine } from '../components/charts.js';
@@ -134,11 +135,11 @@ export const AdminViews = {
   // --- OVERVIEW DASHBOARD ---
   async renderDashboard() {
     const orders = await DBService.getOrders();
-    
+
     // Metrics Calculations (Excludes Rejected orders from Net Revenue / Gain Amount)
     const validOrders = orders.filter(o => o.status !== 'Rejected');
     const rejectedOrders = orders.filter(o => o.status === 'Rejected');
-    
+
     const todayRevenue = validOrders.reduce((sum, o) => sum + (o.pricing?.total || 0), 0);
     const pendingVerification = orders.filter(o => o.status === 'Waiting Verification').length;
     const printingQueue = orders.filter(o => o.status === 'Printing').length;
@@ -221,22 +222,22 @@ export const AdminViews = {
             </thead>
             <tbody>
               ${orders.slice(0, 5).map(o => {
-                const filesList = (o.files && o.files.length > 0) ? o.files : (o.file ? [o.file] : []);
-                return `
+      const filesList = (o.files && o.files.length > 0) ? o.files : (o.file ? [o.file] : []);
+      return `
                 <tr>
                   <td><b>${o.id}</b></td>
                   <td>${o.customerName || 'Customer'}<br><span class="text-muted" style="font-size:0.8rem;">${o.customerPhone || 'N/A'}</span></td>
                   <td>
                     ${filesList.map((f, idx) => `
                       <div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${f.name || 'Document.pdf'}">
-                        📄 ${f.name || `Document_${idx+1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span>
+                        📄 ${f.name || `Document_${idx + 1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span>
                       </div>
                     `).join('')}
                   </td>
                   <td>
                     ${filesList.map((f, idx) => `
                       <div style="font-size:0.75rem;">
-                        ${filesList.length > 1 ? `<b>Doc ${idx+1}:</b> ` : ''}${(f.options || o.options)?.paperSize || 'A4'} • ${(f.options || o.options)?.colorMode || 'B&W'} • ${(f.options || o.options)?.copies || 1} copy
+                        ${filesList.length > 1 ? `<b>Doc ${idx + 1}:</b> ` : ''}${(f.options || o.options)?.paperSize || 'A4'} • ${(f.options || o.options)?.colorMode || 'B&W'} • ${(f.options || o.options)?.copies || 1} copy
                       </div>
                     `).join('')}
                   </td>
@@ -247,7 +248,8 @@ export const AdminViews = {
                     <button class="btn btn-sm btn-secondary" onclick="window.location.hash='#admin-orders?id=${o.id}'">Inspect</button>
                   </td>
                 </tr>
-              `;}).join('')}
+              `;
+    }).join('')}
             </tbody>
           </table>
         </div>
@@ -282,20 +284,36 @@ export const AdminViews = {
 
     const html = `
       <div class="table-card mb-4">
-        <div class="table-toolbar">
-          <h3>Order Management Pipeline (${orders.length} orders)</h3>
-          
-          <div style="display:flex; gap:0.75rem;">
-            <input type="text" class="form-control" id="order-search-field" placeholder="Search ID, Name, Phone, UTR..." value="${paramId}">
-            <select class="form-select" id="order-status-filter">
-              <option value="">All Statuses</option>
-              <option value="Waiting Verification">Waiting Verification</option>
-              <option value="Payment Approved">Payment Approved</option>
-              <option value="Printing">Printing</option>
-              <option value="Ready for Pickup">Ready for Pickup</option>
-              <option value="Completed">Completed</option>
-              <option value="Rejected">Rejected</option>
-            </select>
+        <div class="table-toolbar" style="flex-direction:column; align-items:stretch; gap:1rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <h3 style="margin:0;">Order Management Pipeline (<span id="pipeline-total-count">${orders.length}</span> orders)</h3>
+              <p class="text-muted" style="font-size:0.85rem; margin-top:0.25rem;">Live order processing queue & status workflow management</p>
+            </div>
+            
+            <div style="display:flex; gap:0.75rem; align-items:center;">
+              <input type="text" class="form-control" id="order-search-field" placeholder="Search ID, Name, Phone, UTR..." value="${paramId}">
+              <select class="form-select" id="order-status-filter" style="width:200px;">
+                <option value="">All Statuses</option>
+                <option value="Waiting Verification">⏳ Waiting Verification</option>
+                <option value="Payment Approved">💳 Payment Approved</option>
+                <option value="Printing">🖨️ Printing</option>
+                <option value="Ready for Pickup">📦 Ready for Pickup</option>
+                <option value="Completed">✅ Completed</option>
+                <option value="Rejected">❌ Rejected</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Quick Status Filter Pills Bar -->
+          <div style="display:flex; gap:0.5rem; flex-wrap:wrap; border-top:1px solid var(--border-color); padding-top:0.85rem;" id="pipeline-status-pills">
+            <button class="btn btn-sm btn-outline active-pill" id="pill-all" onclick="window.filterPipelineByPill('')">All (<span id="count-all">${orders.length}</span>)</button>
+            <button class="btn btn-sm btn-outline" id="pill-waiting" onclick="window.filterPipelineByPill('Waiting Verification')">⏳ Waiting (<span id="count-waiting">${orders.filter(o => o.status === 'Waiting Verification').length}</span>)</button>
+            <button class="btn btn-sm btn-outline" id="pill-approved" onclick="window.filterPipelineByPill('Payment Approved')">💳 Approved (<span id="count-approved">${orders.filter(o => o.status === 'Payment Approved').length}</span>)</button>
+            <button class="btn btn-sm btn-outline" id="pill-printing" onclick="window.filterPipelineByPill('Printing')">🖨️ Printing (<span id="count-printing">${orders.filter(o => o.status === 'Printing').length}</span>)</button>
+            <button class="btn btn-sm btn-outline" id="pill-ready" onclick="window.filterPipelineByPill('Ready for Pickup')">📦 Ready (<span id="count-ready">${orders.filter(o => o.status === 'Ready for Pickup').length}</span>)</button>
+            <button class="btn btn-sm btn-outline" id="pill-completed" onclick="window.filterPipelineByPill('Completed')">✅ Completed (<span id="count-completed">${orders.filter(o => o.status === 'Completed').length}</span>)</button>
+            <button class="btn btn-sm btn-outline" id="pill-rejected" onclick="window.filterPipelineByPill('Rejected')">❌ Rejected (<span id="count-rejected">${orders.filter(o => o.status === 'Rejected').length}</span>)</button>
           </div>
         </div>
 
@@ -307,7 +325,7 @@ export const AdminViews = {
                 <th>Customer Info</th>
                 <th>Delivery Area & Address</th>
                 <th>Files (${orders.reduce((acc, o) => acc + (o.files?.length || 1), 0)} Total PDFs)</th>
-                <th>Specs & Copies</th>
+                <th style="background:rgba(59,130,246,0.1); color:var(--primary); font-weight:800; font-size:0.9rem;">📋 Specs & Copies</th>
                 <th>Amount</th>
                 <th>UTR Payment</th>
                 <th>Status</th>
@@ -325,8 +343,8 @@ export const AdminViews = {
                   </td>
                 </tr>
               ` : orders.map(o => {
-                const filesList = (o.files && o.files.length > 0) ? o.files : (o.file ? [o.file] : []);
-                return `
+      const filesList = (o.files && o.files.length > 0) ? o.files : (o.file ? [o.file] : []);
+      return `
                 <tr id="order-row-${o.id}">
                   <td>
                     <b>${o.id}</b>
@@ -339,8 +357,8 @@ export const AdminViews = {
                   <td>
                     <div style="font-weight:700; font-size:0.825rem; color:var(--primary);">
                       ${(o.pricing?.deliveryFee && o.pricing.deliveryFee > 0)
-                        ? `🚚 ${o.pricing?.deliveryZone || 'Doorstep Delivery'} (+${formatCurrency(o.pricing.deliveryFee)})`
-                        : '🏪 Store Pickup (Free)'}
+          ? `🚚 ${o.pricing?.deliveryZone || 'Doorstep Delivery'} (+${formatCurrency(o.pricing.deliveryFee)})`
+          : '🏪 Store Pickup (Free)'}
                     </div>
                     <div style="font-size:0.775rem; color:var(--text-muted); margin-top:0.25rem; max-width:200px;" title="${o.customerAddress || 'No address provided (Store Pickup)'}">
                       📍 ${o.customerAddress || 'Self Pickup at Shop'}
@@ -349,7 +367,7 @@ export const AdminViews = {
                   <td>
                     ${filesList.map((f, fIdx) => `
                       <div style="margin-bottom:0.5rem; background:var(--bg-card); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid var(--border-color);">
-                        <div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${f.name || 'Document.pdf'}">📄 ${f.name || `Document_${fIdx+1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span></div>
+                        <div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${f.name || 'Document.pdf'}">📄 ${f.name || `Document_${fIdx + 1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span></div>
                         <div style="display:flex; gap:0.35rem; margin-top:0.25rem;">
                           <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.previewOrderFile('${o.id}', ${fIdx})">👁️ Preview</button>
                           <button class="btn btn-sm btn-primary" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.downloadOrderFile('${o.id}', ${fIdx})">📥 Download</button>
@@ -357,13 +375,47 @@ export const AdminViews = {
                       </div>
                     `).join('')}
                   </td>
-                  <td>
-                    ${filesList.map((f, fIdx) => `
-                      <div style="margin-bottom:0.35rem; padding-bottom:0.35rem; ${fIdx < filesList.length - 1 ? 'border-bottom:1px dashed var(--border-color);' : ''}">
-                        <div style="font-size:0.8rem; font-weight:600;">${filesList.length > 1 ? `Doc ${fIdx + 1}: ` : ''}${(f.options || o.options)?.paperSize || 'A4'} (${(f.options || o.options)?.paperQuality || '70 GSM'})</div>
-                        <div style="font-size:0.75rem; color:var(--text-muted);">${(f.options || o.options)?.colorMode || 'B&W'} • ${(f.options || o.options)?.copies || 1} copy(ies) ${(f.options || o.options)?.binding && (f.options || o.options).binding !== 'None' ? `• ${(f.options || o.options).binding} binding` : ''}</div>
+                  <td style="min-width:230px;">
+                    ${filesList.map((f, fIdx) => {
+            const opts = f.options || o.options || {};
+            const paperSize = opts.paperSize || 'A4';
+            const paperQuality = opts.paperQuality || '70 GSM';
+            const copies = opts.copies || 1;
+            const colorMode = opts.colorMode || 'B&W';
+            const binding = opts.binding && opts.binding !== 'None' ? opts.binding : null;
+            const lamination = opts.lamination && opts.lamination !== 'No' ? opts.lamination : null;
+
+            let colorBadge = '';
+            if (colorMode === 'Custom Split') {
+              colorBadge = `<span style="background:rgba(16,185,129,0.18); color:#059669; font-weight:700; font-size:0.78rem; padding:0.18rem 0.5rem; border-radius:6px; border:1px solid rgba(16,185,129,0.35);">🎨 Color Pgs: ${opts.colorPageRange || 'Selected'}</span>`;
+            } else if (colorMode === 'Color') {
+              colorBadge = `<span style="background:rgba(16,185,129,0.18); color:#059669; font-weight:700; font-size:0.78rem; padding:0.18rem 0.5rem; border-radius:6px; border:1px solid rgba(16,185,129,0.35);">🎨 Full Color</span>`;
+            } else {
+              colorBadge = `<span style="background:var(--bg-body); color:var(--text-main); font-weight:700; font-size:0.78rem; padding:0.18rem 0.5rem; border-radius:6px; border:1px solid var(--border-color);">⬛ B&W</span>`;
+            }
+
+            const rangeBadge = opts.pageRange && opts.pageRange !== 'All'
+              ? `<span style="background:rgba(59,130,246,0.15); color:#2563eb; font-weight:700; font-size:0.78rem; padding:0.18rem 0.5rem; border-radius:6px;">📄 Pgs: ${opts.pageRange}</span>`
+              : '';
+
+            return `
+                      <div style="margin-bottom:0.5rem; background:rgba(59,130,246,0.06); border:1.5px solid rgba(59,130,246,0.22); padding:0.65rem 0.75rem; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+                        <div style="font-size:0.9rem; font-weight:800; color:var(--text-main); display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                          <span>${filesList.length > 1 ? `Doc ${fIdx + 1}: ` : ''}📋 ${paperSize} <span style="font-weight:600; font-size:0.8rem; color:var(--text-muted);">(${paperQuality})</span></span>
+                          <span style="background:var(--primary); color:#ffffff; font-weight:900; font-size:0.82rem; padding:0.2rem 0.6rem; border-radius:12px; white-space:nowrap; box-shadow:0 2px 4px rgba(59,130,246,0.25);">
+                            ⚡ ${copies} ${copies > 1 ? 'Copies' : 'Copy'}
+                          </span>
+                        </div>
+
+                        <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; margin-top:0.35rem;">
+                          ${colorBadge}
+                          ${rangeBadge}
+                          ${binding ? `<span style="background:rgba(139,92,246,0.15); color:#6d28d9; font-weight:700; font-size:0.78rem; padding:0.18rem 0.5rem; border-radius:6px;">📘 ${binding} Binding</span>` : ''}
+                          ${lamination ? `<span style="background:rgba(245,158,11,0.18); color:#b45309; font-weight:700; font-size:0.78rem; padding:0.18rem 0.5rem; border-radius:6px;">✨ ${lamination} Lamination</span>` : ''}
+                        </div>
                       </div>
-                    `).join('')}
+                      `;
+          }).join('')}
                   </td>
                   <td><b>${formatCurrency(o.pricing?.total)}</b></td>
                   <td>
@@ -371,14 +423,34 @@ export const AdminViews = {
                     <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.2rem 0.5rem; margin-top:0.35rem;" onclick="window.viewOrderScreenshot('${o.id}')">🖼️ View Screenshot</button>
                   </td>
                   <td>
-                    <select class="form-select" style="font-size:0.8rem; padding:0.35rem 0.5rem;" onchange="window.updateOrderStatusFromTable('${o.id}', this.value)">
-                      <option value="Waiting Verification" ${o.status === 'Waiting Verification' ? 'selected' : ''}>Waiting Verification</option>
-                      <option value="Payment Approved" ${o.status === 'Payment Approved' ? 'selected' : ''}>Payment Approved</option>
-                      <option value="Printing" ${o.status === 'Printing' ? 'selected' : ''}>Printing</option>
-                      <option value="Ready for Pickup" ${o.status === 'Ready for Pickup' ? 'selected' : ''}>Ready for Pickup</option>
-                      <option value="Completed" ${o.status === 'Completed' ? 'selected' : ''}>Completed</option>
-                      <option value="Rejected" ${o.status === 'Rejected' ? 'selected' : ''}>Rejected</option>
-                    </select>
+                    ${(() => {
+          const isLocked = o.isStatusLocked || o.status === 'Completed' || o.status === 'Rejected';
+          const isComp = o.status === 'Completed';
+          if (isLocked) {
+            return `
+                        <div id="status-cell-container-${o.id}" style="display:flex; flex-direction:column; gap:0.25rem;">
+                          <span style="background:${isComp ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.15)'}; color:${isComp ? '#059669' : '#dc2626'}; font-weight:800; font-size:0.8rem; padding:0.35rem 0.6rem; border-radius:8px; border:1.5px solid ${isComp ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.35)'}; white-space:nowrap; display:inline-flex; align-items:center; gap:0.3rem;">
+                            🔒 ${isComp ? '✅ Completed (Confirmed)' : '❌ Rejected (Confirmed)'}
+                          </span>
+                          <button class="btn btn-sm btn-link" style="font-size:0.7rem; color:var(--text-muted); padding:0; text-decoration:underline; text-align:left; border:none; background:none; cursor:pointer;" onclick="window.unlockOrderStatus('${o.id}')" title="Unlock status if edit is required">
+                            🔓 Unlock Status
+                          </button>
+                        </div>
+                        `;
+          }
+          return `
+                      <div id="status-cell-container-${o.id}">
+                        <select class="form-select" style="font-size:0.8rem; padding:0.35rem 0.5rem; font-weight:600;" onchange="window.updateOrderStatusFromTable('${o.id}', this.value)" id="select-status-${o.id}">
+                          <option value="Waiting Verification" ${o.status === 'Waiting Verification' ? 'selected' : ''}>⏳ Waiting Verification</option>
+                          <option value="Payment Approved" ${o.status === 'Payment Approved' ? 'selected' : ''}>💳 Payment Approved</option>
+                          <option value="Printing" ${o.status === 'Printing' ? 'selected' : ''}>🖨️ Printing</option>
+                          <option value="Ready for Pickup" ${o.status === 'Ready for Pickup' ? 'selected' : ''}>📦 Ready for Pickup</option>
+                          <option value="Completed" ${o.status === 'Completed' ? 'selected' : ''}>✅ Completed (Confirm & Lock)</option>
+                          <option value="Rejected" ${o.status === 'Rejected' ? 'selected' : ''}>❌ Rejected (Confirm & Lock)</option>
+                        </select>
+                      </div>
+                      `;
+        })()}
                   </td>
                   <td>
                     <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
@@ -389,7 +461,7 @@ export const AdminViews = {
                   </td>
                 </tr>
                 `;
-              }).join('')}
+    }).join('')}
               <tr id="order-no-match-row" style="display:none;">
                 <td colspan="9" class="text-center text-muted" style="padding:2.5rem;">
                   <div style="font-size:2rem; margin-bottom:0.35rem;">🔍</div>
@@ -424,24 +496,11 @@ export const AdminViews = {
         return;
       }
       const file = order.files[fileIndex];
-      let url = file.url;
+      const url = await StorageService.getFileUrl(file);
 
       if (!url) {
         NotificationService.showToast('File data URL unavailable', 'error');
         return;
-      }
-
-      if (url.startsWith('data:')) {
-        const arr = url.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-          u8arr[n] = bstr.charCodeAt(n);
-        }
-        const blob = new Blob([u8arr], { type: mime });
-        url = URL.createObjectURL(blob);
       }
 
       const a = document.createElement('a');
@@ -462,42 +521,21 @@ export const AdminViews = {
       const file = order.files[fileIndex];
       let previewHTML = '';
 
-      const isImageDataUri = file.url && file.url.startsWith('data:image');
-      const isImageFileExt = (file.url && file.url.match(/\.(jpeg|jpg|png|gif|webp|svg)(\?.*)?$/i)) ||
-                             (file.name && file.name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i));
+      const viewUrl = await StorageService.getFileUrl(file);
+
+      const isImageDataUri = viewUrl && viewUrl.startsWith('data:image');
+      const isImageFileExt = (viewUrl && viewUrl.match(/\.(jpeg|jpg|png|gif|webp|svg)(\?.*)?$/i)) ||
+        (file.name && file.name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i));
 
       const isImage = isImageDataUri || isImageFileExt;
 
       if (isImage) {
         previewHTML = `
           <div style="text-align:center; padding:0.5rem; background:var(--bg-card); border-radius:8px;">
-            <img src="${file.url}" alt="${file.name}" style="max-width:100%; max-height:68vh; border-radius:8px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); object-fit:contain;" />
+            <img src="${viewUrl}" alt="${file.name}" style="max-width:100%; max-height:68vh; border-radius:8px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); object-fit:contain;" />
           </div>
         `;
-      } else if (file.url) {
-        let viewUrl = file.url;
-        let activeBlobUrl = null;
-
-        // Convert base64 data:application/pdf to Blob URL on the fly so Chrome iframe security policy permits embedding
-        if (viewUrl.startsWith('data:application/pdf')) {
-          try {
-            const arr = viewUrl.split(',');
-            const mimeMatch = arr[0].match(/:(.*?);/);
-            const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
-            const bstr = atob(arr[1]);
-            let n = bstr.length;
-            const u8arr = new Uint8Array(n);
-            while (n--) {
-              u8arr[n] = bstr.charCodeAt(n);
-            }
-            const blob = new Blob([u8arr], { type: mime });
-            activeBlobUrl = URL.createObjectURL(blob);
-            viewUrl = activeBlobUrl;
-          } catch (err) {
-            console.warn('PDF Data URL to Blob conversion failed:', err);
-          }
-        }
-
+      } else if (viewUrl) {
         previewHTML = `
           <div style="width:100%; height:68vh; background:var(--bg-card); border-radius:8px; overflow:hidden; border:1px solid var(--border-color);">
             <object data="${viewUrl}" type="application/pdf" style="width:100%; height:100%;">
@@ -529,8 +567,8 @@ export const AdminViews = {
           title: `Document Preview - ${file.name}`,
           bodyHTML: previewHTML,
           footerHTML: `
-            ${file.url ? `<button class="btn btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download File</button>` : ''}
-            ${file.url ? `<button class="btn btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open Full Screen ↗</button>` : ''}
+            ${viewUrl ? `<button class="btn btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download File</button>` : ''}
+            ${viewUrl ? `<button class="btn btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open Full Screen ↗</button>` : ''}
             <button class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">Close</button>
           `,
           width: '850px'
@@ -547,28 +585,10 @@ export const AdminViews = {
         return;
       }
       const file = order.files[fileIndex];
-      let url = file.url;
+      const url = await StorageService.getFileUrl(file);
       if (!url) {
         NotificationService.showToast('File URL unavailable', 'error');
         return;
-      }
-
-      if (url.startsWith('data:')) {
-        try {
-          const arr = url.split(',');
-          const mimeMatch = arr[0].match(/:(.*?);/);
-          const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
-          const bstr = atob(arr[1]);
-          let n = bstr.length;
-          const u8arr = new Uint8Array(n);
-          while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-          }
-          const blob = new Blob([u8arr], { type: mime });
-          url = URL.createObjectURL(blob);
-        } catch (e) {
-          console.warn('Blob conversion error:', e);
-        }
       }
 
       const newWin = window.open(url, '_blank');
@@ -586,11 +606,12 @@ export const AdminViews = {
 
       const pay = order.payment || {};
       let bodyHTML = '';
+      const screenshotUrl = await StorageService.getFileUrl({ url: pay.screenshotUrl, idbKey: pay.screenshotIdbKey });
 
-      if (pay.screenshotUrl && pay.screenshotUrl.trim() !== '') {
+      if (screenshotUrl && screenshotUrl.trim() !== '') {
         bodyHTML = `
           <div style="text-align:center; padding:0.5rem;">
-            <img src="${pay.screenshotUrl}" alt="Payment Screenshot" style="max-width:100%; max-height:65vh; border-radius:12px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); display:inline-block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-center text-muted\\' style=\\'padding:2rem;\\'>⚠️ Screenshot preview unavailable or expired.<br><a href=\\'${pay.screenshotUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm btn-primary mt-2\\'>Open Link in New Tab</a></div>';" />
+            <img src="${screenshotUrl}" alt="Payment Screenshot" style="max-width:100%; max-height:65vh; border-radius:12px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); display:inline-block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-center text-muted\\' style=\\'padding:2rem;\\'>⚠️ Screenshot preview unavailable or expired.<br><a href=\\'${screenshotUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm btn-primary mt-2\\'>Open Link in New Tab</a></div>';" />
             <div style="margin-top:1rem; font-size:0.9rem; background:var(--bg-card); padding:0.75rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
               <div>UTR / Ref: <b style="color:var(--primary); font-family:monospace;">${pay.utr || 'N/A'}</b></div>
               <div>Payer Name: <b>${pay.payerName || order.customerName}</b></div>
@@ -644,9 +665,125 @@ export const AdminViews = {
       }
     };
 
+    const updatePipelineCounts = () => {
+      const getC = (st) => st ? orders.filter(o => o.status === st).length : orders.length;
+      const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+      setTxt('pipeline-total-count', orders.length);
+      setTxt('count-all', getC(''));
+      setTxt('count-waiting', getC('Waiting Verification'));
+      setTxt('count-approved', getC('Payment Approved'));
+      setTxt('count-printing', getC('Printing'));
+      setTxt('count-ready', getC('Ready for Pickup'));
+      setTxt('count-completed', getC('Completed'));
+      setTxt('count-rejected', getC('Rejected'));
+    };
+
+    window.filterPipelineByPill = (st) => {
+      if (statusFilter) {
+        statusFilter.value = st;
+      }
+      const pills = document.querySelectorAll('#pipeline-status-pills .btn');
+      pills.forEach(p => {
+        p.classList.remove('btn-primary', 'active-pill');
+        p.classList.add('btn-outline');
+      });
+
+      const mapPillId = {
+        '': 'pill-all',
+        'Waiting Verification': 'pill-waiting',
+        'Payment Approved': 'pill-approved',
+        'Printing': 'pill-printing',
+        'Ready for Pickup': 'pill-ready',
+        'Completed': 'pill-completed',
+        'Rejected': 'pill-rejected'
+      };
+      const activeBtn = document.getElementById(mapPillId[st] || 'pill-all');
+      if (activeBtn) {
+        activeBtn.classList.remove('btn-outline');
+        activeBtn.classList.add('btn-primary', 'active-pill');
+      }
+      applyFilters();
+    };
+
     window.updateOrderStatusFromTable = async (orderId, newStatus) => {
-      await DBService.updateOrderStatus(orderId, newStatus);
-      NotificationService.showToast(`Order ${orderId} updated to '${newStatus}'`, 'success');
+      const targetOrder = orders.find(o => o.id === orderId);
+      const isFinalStatus = newStatus === 'Completed' || newStatus === 'Rejected';
+
+      if (isFinalStatus) {
+        const actionLabel = newStatus === 'Completed' ? 'COMPLETED' : 'REJECTED';
+        if (!confirm(`🔒 Confirm marking Order "${orderId}" as ${actionLabel}?\n\nOnce confirmed, this status will be locked and cannot be accidentally changed.`)) {
+          // Reset select box back to previous status
+          const selectEl = document.getElementById(`select-status-${orderId}`);
+          if (selectEl && targetOrder) selectEl.value = targetOrder.status;
+          return;
+        }
+      }
+
+      await DBService.updateOrderStatus(orderId, newStatus, isFinalStatus ? true : false);
+      if (targetOrder) {
+        targetOrder.status = newStatus;
+        targetOrder.isStatusLocked = isFinalStatus;
+      }
+
+      // Flash row highlight animation
+      const row = document.getElementById(`order-row-${orderId}`);
+      if (row) {
+        row.style.transition = 'background-color 0.4s ease';
+        row.style.backgroundColor = newStatus === 'Completed' ? 'rgba(16,185,129,0.25)' : 'rgba(59,130,246,0.2)';
+        setTimeout(() => { if (row) row.style.backgroundColor = ''; }, 1400);
+      }
+
+      // Replace status cell with locked badge if finalized
+      const cellContainer = document.getElementById(`status-cell-container-${orderId}`);
+      if (cellContainer && cellContainer.parentNode && isFinalStatus) {
+        const isComp = newStatus === 'Completed';
+        cellContainer.parentNode.innerHTML = `
+          <div id="status-cell-container-${orderId}" style="display:flex; flex-direction:column; gap:0.25rem;">
+            <span style="background:${isComp ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.15)'}; color:${isComp ? '#059669' : '#dc2626'}; font-weight:800; font-size:0.8rem; padding:0.35rem 0.6rem; border-radius:8px; border:1.5px solid ${isComp ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.35)'}; white-space:nowrap; display:inline-flex; align-items:center; gap:0.3rem;">
+              🔒 ${isComp ? '✅ Completed (Confirmed)' : '❌ Rejected (Confirmed)'}
+            </span>
+            <button class="btn btn-sm btn-link" style="font-size:0.7rem; color:var(--text-muted); padding:0; text-decoration:underline; text-align:left; border:none; background:none; cursor:pointer;" onclick="window.unlockOrderStatus('${orderId}')" title="Unlock status if edit is required">
+              🔓 Unlock Status
+            </button>
+          </div>
+        `;
+      }
+
+      if (newStatus === 'Completed') {
+        NotificationService.showToast(`🔒 Order ${orderId} CONFIRMED & COMPLETED! Status locked.`, 'success');
+      } else {
+        NotificationService.showToast(`Order ${orderId} updated to '${newStatus}'`, 'info');
+      }
+
+      updatePipelineCounts();
+      applyFilters();
+    };
+
+    window.unlockOrderStatus = async (orderId) => {
+      if (confirm(`🔓 Are you sure you want to UNLOCK the status for Order "${orderId}"? This will allow changing the status again.`)) {
+        const targetOrder = orders.find(o => o.id === orderId);
+        if (targetOrder) {
+          targetOrder.isStatusLocked = false;
+          await DBService.updateOrderStatus(orderId, targetOrder.status, false);
+
+          const cellContainer = document.getElementById(`status-cell-container-${orderId}`);
+          if (cellContainer && cellContainer.parentNode) {
+            cellContainer.parentNode.innerHTML = `
+              <div id="status-cell-container-${orderId}">
+                <select class="form-select" style="font-size:0.8rem; padding:0.35rem 0.5rem; font-weight:600;" onchange="window.updateOrderStatusFromTable('${orderId}', this.value)" id="select-status-${orderId}">
+                  <option value="Waiting Verification" ${targetOrder.status === 'Waiting Verification' ? 'selected' : ''}>⏳ Waiting Verification</option>
+                  <option value="Payment Approved" ${targetOrder.status === 'Payment Approved' ? 'selected' : ''}>💳 Payment Approved</option>
+                  <option value="Printing" ${targetOrder.status === 'Printing' ? 'selected' : ''}>🖨️ Printing</option>
+                  <option value="Ready for Pickup" ${targetOrder.status === 'Ready for Pickup' ? 'selected' : ''}>📦 Ready for Pickup</option>
+                  <option value="Completed" ${targetOrder.status === 'Completed' ? 'selected' : ''}>✅ Completed (Confirm & Lock)</option>
+                  <option value="Rejected" ${targetOrder.status === 'Rejected' ? 'selected' : ''}>❌ Rejected (Confirm & Lock)</option>
+                </select>
+              </div>
+            `;
+          }
+          NotificationService.showToast(`🔓 Status unlocked for Order ${orderId}`, 'info');
+        }
+      }
     };
 
     window.sendWhatsAppInvoice = async (orderId) => {
@@ -730,57 +867,206 @@ Thank you for choosing ${settings.shopName}!
     };
 
     searchField?.addEventListener('input', applyFilters);
-    statusFilter?.addEventListener('change', applyFilters);
+    statusFilter?.addEventListener('change', (e) => {
+      window.filterPipelineByPill(e.target.value);
+    });
     if (paramId) applyFilters();
+
+    // --- LIVE REALTIME RECEPTION & SYNC ENGINE FOR ADMIN PIPELINE ---
+    if (window._adminPipelineSyncTimer) {
+      clearInterval(window._adminPipelineSyncTimer);
+    }
+
+    let previousOrderCount = orders.length;
+
+    window._adminPipelineSyncTimer = setInterval(async () => {
+      // Auto-stop if user navigated away from pipeline page
+      if (!window.location.hash.startsWith('#admin-orders')) {
+        clearInterval(window._adminPipelineSyncTimer);
+        window._adminPipelineSyncTimer = null;
+        return;
+      }
+
+      const freshOrders = await DBService.getOrders();
+      if (freshOrders.length > previousOrderCount) {
+        const diff = freshOrders.length - previousOrderCount;
+        previousOrderCount = freshOrders.length;
+        NotificationService.showToast(`🔔 ${diff} New Customer Order(s) Received! Live updating pipeline...`, 'success');
+        this.renderOrders(queryStr);
+      } else {
+        freshOrders.forEach(fo => {
+          const target = orders.find(o => o.id === fo.id);
+          if (target && target.status !== fo.status) {
+            target.status = fo.status;
+            const selectEl = document.querySelector(`#order-row-${fo.id} select`);
+            if (selectEl) selectEl.value = fo.status;
+          }
+        });
+        updatePipelineCounts();
+        applyFilters();
+      }
+    }, 5000);
   },
 
-  // --- PRICING MANAGEMENT EDITOR ---
+  // --- PRICING & PRODUCTS MANAGEMENT EDITOR (FULL CRUD) ---
   async renderPricing() {
     const pricing = PricingEngine.getPricingData();
 
     const html = `
       <div class="table-card mb-4">
-        <div class="table-toolbar">
+        <div class="table-toolbar" style="flex-wrap:wrap; gap:1rem;">
           <div>
-            <h3>Dynamic Price Manager</h3>
-            <p class="text-muted" style="font-size:0.85rem;">Modify costs for paper sizes, GSM qualities, binding, and color modes instantly without code changes.</p>
+            <h3>Dynamic Price & Product Manager (CRUD)</h3>
+            <p class="text-muted" style="font-size:0.85rem;">Create, edit, or delete paper sizes, GSM qualities, binding choices, color rates, and delivery charges with full CRUD control.</p>
           </div>
-          <button class="btn btn-success" id="btn-save-all-pricing">💾 Save Price Updates</button>
+          <div style="display:flex; gap:0.75rem; align-items:center;">
+            <a href="#admin-catalog" class="btn btn-outline">🛠️ Manage Services Catalog (CRUD)</a>
+            <button class="btn btn-success" id="btn-save-all-pricing">💾 Save Price Updates</button>
+          </div>
         </div>
 
         <div style="padding:1.5rem; display:grid; grid-template-columns:1fr 1fr; gap:2rem;">
-          <!-- Paper Base Rates -->
-          <div>
-            <h4 style="margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">📄 Paper Size Base Rates (₹)</h4>
-            ${Object.entries(pricing.paperSizes).map(([size, item]) => `
-              <div class="form-group">
-                <label class="form-label">${size} Base Rate (per page)</label>
-                <input type="number" step="0.25" class="form-control price-input-field" data-type="paperSizes" data-key="${size}" data-prop="baseRate" value="${item.baseRate}">
-              </div>
-            `).join('')}
+          
+          <!-- 1. Paper Base Rates (CRUD) -->
+          <div class="glass-panel" style="padding:1.25rem; border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.6rem;">
+              <h4 style="margin:0; font-size:1.05rem; color:var(--primary);">📄 Paper Sizes & Base Rates (per page)</h4>
+              <button class="btn btn-sm btn-primary" onclick="window.openAddPaperSizeModal()">➕ Add Size</button>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap:0.85rem;">
+              ${Object.entries(pricing.paperSizes || {}).map(([size, item]) => `
+                <div style="background:var(--bg-card); padding:0.75rem 1rem; border-radius:10px; border:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; gap:0.75rem;">
+                  <div style="flex:1;">
+                    <div style="font-weight:700; font-size:0.9rem;">${size}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted);">${item.label || size}</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.8rem; font-weight:600;">₹</span>
+                    <input type="number" step="0.25" min="0" class="form-control form-control-sm price-input-field" data-type="paperSizes" data-key="${size}" data-prop="baseRate" value="${item.baseRate}" style="width:85px; font-weight:700;">
+                    <button class="btn btn-sm btn-danger" style="font-size:0.7rem; padding:0.25rem 0.45rem;" onclick="window.deletePaperSize('${size}')" title="Delete Paper Size">🗑️</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
           </div>
 
-          <!-- Binding Costs -->
-          <div>
-            <h4 style="margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.5rem;">📚 Book Binding Costs (₹)</h4>
-            ${Object.entries(pricing.bindings).map(([name, item]) => `
-              <div class="form-group">
-                <label class="form-label">${name} Binding Rate</label>
-                <input type="number" step="5" class="form-control price-input-field" data-type="bindings" data-key="${name}" data-prop="price" value="${item.price}">
-              </div>
-            `).join('')}
+          <!-- 2. Paper Qualities (GSM) & Multipliers (CRUD) -->
+          <div class="glass-panel" style="padding:1.25rem; border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.6rem;">
+              <h4 style="margin:0; font-size:1.05rem; color:var(--primary);">📜 Paper Qualities (GSM) Multipliers</h4>
+              <button class="btn btn-sm btn-primary" onclick="window.openAddPaperQualityModal()">➕ Add Quality</button>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:0.85rem;">
+              ${Object.entries(pricing.paperQualities || {}).map(([quality, item]) => `
+                <div style="background:var(--bg-card); padding:0.75rem 1rem; border-radius:10px; border:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; gap:0.75rem;">
+                  <div style="flex:1;">
+                    <div style="font-weight:700; font-size:0.9rem;">${quality}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted);">${item.label || quality}</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.75rem; color:var(--text-muted);">x</span>
+                    <input type="number" step="0.1" min="0.1" class="form-control form-control-sm price-input-field" data-type="paperQualities" data-key="${quality}" data-prop="multiplier" value="${item.multiplier}" style="width:85px; font-weight:700;">
+                    <button class="btn btn-sm btn-danger" style="font-size:0.7rem; padding:0.25rem 0.45rem;" onclick="window.deletePaperQuality('${quality}')" title="Delete Quality">🗑️</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
           </div>
 
-          <!-- Area-Wise Delivery Charges -->
-          <div style="grid-column: span 2; border-top:1px solid var(--border-color); padding-top:1.5rem; margin-top:0.5rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">
-              <h4 style="margin:0;">🚚 Area-Wise Delivery Charges & Zones</h4>
-              <button class="btn btn-sm btn-primary" onclick="window.openAddDeliveryZoneModal()">➕ Add New Delivery Zone / Fee</button>
+          <!-- 3. Book Binding Costs (CRUD) -->
+          <div class="glass-panel" style="padding:1.25rem; border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.6rem;">
+              <h4 style="margin:0; font-size:1.05rem; color:var(--primary);">📚 Book Binding Options & Rates (CRUD)</h4>
+              <button class="btn btn-sm btn-primary" onclick="window.openAddBindingModal()">➕ Add Binding</button>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:0.85rem;">
+              ${Object.entries(pricing.bindings || {}).map(([name, item]) => `
+                <div style="background:var(--bg-card); padding:0.85rem 1rem; border-radius:10px; border:1px solid var(--border-color); display:flex; flex-direction:column; gap:0.5rem;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem;">
+                    <div style="flex:1;">
+                      <div style="font-weight:700; font-size:0.9rem; color:var(--primary);">📚 ${name}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                      <span style="font-size:0.8rem; font-weight:600;">₹</span>
+                      <input type="number" step="5" min="0" class="form-control form-control-sm price-input-field" data-type="bindings" data-key="${name}" data-prop="price" value="${item.price}" style="width:85px; font-weight:700;">
+                      <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.25rem 0.45rem;" onclick="window.openAddBindingModal('${name}')" title="Edit Binding & Explanation">✏️ Edit</button>
+                      ${name !== 'None' ? `
+                        <button class="btn btn-sm btn-danger" style="font-size:0.7rem; padding:0.25rem 0.45rem;" onclick="window.deleteBinding('${name}')" title="Delete Binding Option">🗑️</button>
+                      ` : ''}
+                    </div>
+                  </div>
+                  <div style="font-size:0.78rem; color:var(--text-muted); background:var(--bg-body); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid var(--border-color);">
+                    💡 <b>Explanation ("What is binding?"):</b> ${item.description || item.label || 'Standard document binding finish.'}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 4. Color & Extra Finishing Rates (CRUD) -->
+          <div class="glass-panel" style="padding:1.25rem; border-radius:12px; grid-column: span 2;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid var(--border-color); padding-bottom:0.6rem; flex-wrap:wrap; gap:0.5rem;">
+              <h4 style="margin:0; font-size:1.05rem; color:var(--primary);">🎨 Color & Extra Finishing Rates</h4>
+              <button class="btn btn-sm btn-primary" onclick="window.openAddFinishingModal()">➕ Add Finishing Option</button>
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;">
+              <!-- Standard Color Page Surcharge Rate -->
+              <div style="background:var(--bg-card); padding:1rem; border-radius:10px; border:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+                <div>
+                  <div style="font-weight:700; font-size:0.925rem; color:var(--primary);">🎨 Color Page Surcharge Rate</div>
+                  <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.2rem;">Additional surcharge per color page printed</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.4rem;">
+                  <span style="font-size:0.85rem; font-weight:700;">+₹</span>
+                  <input type="number" step="0.5" min="0" class="form-control form-control-sm price-input-field" data-type="colorModes" data-key="Color" data-prop="costPerPage" value="${pricing.colorModes?.['Color']?.costPerPage || 6.00}" style="width:90px; font-weight:700;">
+                </div>
+              </div>
+
+              <!-- List of Dynamic Finishing / Lamination Options (CRUD) -->
+              ${Object.entries(pricing.lamination || {}).map(([key, item]) => `
+                <div style="background:var(--bg-card); padding:1rem; border-radius:10px; border:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; gap:1rem;">
+                  <div style="flex:1;">
+                    <div style="font-weight:700; font-size:0.9rem;">🛡️ ${key}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.15rem;">${item.label || key}</div>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="font-size:0.8rem; font-weight:600;">₹</span>
+                    <input type="number" step="0.5" min="0" class="form-control form-control-sm price-input-field" data-type="lamination" data-key="${key}" data-prop="pricePerPage" value="${item.pricePerPage || 0}" style="width:85px; font-weight:700;">
+                    ${key !== 'No' ? `
+                      <button class="btn btn-sm btn-danger" style="font-size:0.7rem; padding:0.25rem 0.45rem;" onclick="window.deleteFinishingOption('${key}')" title="Delete Finishing Option">🗑️</button>
+                    ` : '<span class="badge badge-approved" style="font-size:0.68rem;">Default</span>'}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 5. Area-Wise Delivery Charges & Zones (CRUD) -->
+          <div style="grid-column: span 2; border-top:1px solid var(--border-color); padding-top:1.5rem; margin-top:0.5rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem; border-bottom:1px solid var(--border-color); padding-bottom:0.85rem; flex-wrap:wrap; gap:1rem;">
+              <div style="display:flex; align-items:center; gap:0.75rem;">
+                <h4 style="margin:0;">🚚 Area-Wise Delivery Charges & Zones</h4>
+                <span class="badge" style="background:var(--primary-light); color:var(--primary); font-weight:700; font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:12px; border:1px solid var(--border-color);">
+                  ${Object.keys(pricing.deliveryZones || {}).length} Total Zones
+                </span>
+              </div>
+
+              <div style="display:flex; gap:0.75rem; align-items:center; flex-grow:1; max-width:440px; justify-content:flex-end;">
+                <div style="position:relative; width:100%; max-width:260px;">
+                  <input type="text" class="form-control form-control-sm" id="delivery-zone-search-input" placeholder="🔍 Search area or zone name..." style="padding-left:2.1rem; border-radius:20px;">
+                  <span style="position:absolute; left:0.75rem; top:50%; transform:translateY(-50%); font-size:0.8rem; opacity:0.6;">🔍</span>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="window.openAddDeliveryZoneModal()" style="white-space:nowrap;">➕ Add New Zone</button>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;" id="delivery-zones-grid">
               ${Object.entries(pricing.deliveryZones || {}).map(([zone, item]) => `
-                <div class="glass-panel" style="padding:1.1rem; border-radius:12px; position:relative;">
+                <div class="glass-panel zone-card-item" data-zone-key="${zone.toLowerCase()}" data-zone-label="${(item.label || '').toLowerCase()}" style="padding:1.1rem; border-radius:12px; position:relative;">
                   <div style="font-weight:700; font-size:0.9rem; margin-bottom:0.75rem; display:flex; justify-content:space-between; align-items:center;">
                     <span style="color:var(--primary);">📍 ${zone}</span>
                     ${zone !== 'Pickup' ? `
@@ -799,6 +1085,12 @@ Thank you for choosing ${settings.shopName}!
                   </div>
                 </div>
               `).join('')}
+
+              <div id="no-zone-match-msg" style="display:none; grid-column:span 2; text-align:center; padding:2.5rem 1rem; color:var(--text-muted); background:var(--bg-card); border-radius:12px; border:1px dashed var(--border-color);">
+                <div style="font-size:2rem; margin-bottom:0.5rem;">🔍</div>
+                <h5>No delivery zones match your search</h5>
+                <p style="font-size:0.85rem; margin-top:0.25rem;">Try searching for a different area name or clear the search input field.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -806,6 +1098,28 @@ Thank you for choosing ${settings.shopName}!
     `;
 
     await this.renderAdminLayout('pricing', html);
+
+    // Live Search Filter for Delivery Zones
+    const zoneSearchInput = document.getElementById('delivery-zone-search-input');
+    if (zoneSearchInput) {
+      zoneSearchInput.addEventListener('input', (e) => {
+        const val = e.target.value.trim().toLowerCase();
+        const cards = document.querySelectorAll('.zone-card-item');
+        let visibleCount = 0;
+        cards.forEach(card => {
+          const key = card.dataset.zoneKey || '';
+          const label = card.dataset.zoneLabel || '';
+          const matches = !val || key.includes(val) || label.includes(val);
+          card.style.display = matches ? '' : 'none';
+          if (matches) visibleCount++;
+        });
+
+        const noMatchMsg = document.getElementById('no-zone-match-msg');
+        if (noMatchMsg) {
+          noMatchMsg.style.display = (visibleCount === 0 && cards.length > 0) ? '' : 'none';
+        }
+      });
+    }
 
     document.getElementById('btn-save-all-pricing').onclick = () => {
       const inputs = document.querySelectorAll('.price-input-field');
@@ -829,6 +1143,242 @@ Thank you for choosing ${settings.shopName}!
 
       PricingEngine.savePricingData(pricing);
       NotificationService.showToast('All pricing structure & delivery fees saved successfully!', 'success');
+    };
+
+    // Paper Size Add Modal & Handler
+    window.openAddPaperSizeModal = () => {
+      const modalHTML = `
+        <form id="add-paper-size-form" onsubmit="event.preventDefault(); window.saveNewPaperSize();">
+          <div class="form-group mb-3">
+            <label class="form-label">Paper Size Code / Name *</label>
+            <input type="text" class="form-control" id="new-size-name" placeholder="E.g., A2, B5, Arch D" required autofocus>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">Base Rate per Page (₹) *</label>
+            <input type="number" step="0.25" min="0" class="form-control" id="new-size-rate" value="5.00" required>
+          </div>
+          <div class="form-group mb-4">
+            <label class="form-label">Display Label *</label>
+            <input type="text" class="form-control" id="new-size-label" placeholder="E.g., A2 Poster (420 x 594 mm)" required>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+            <button type="button" class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close();">Cancel</button>
+            <button type="submit" class="btn btn-success">➕ Add Paper Size</button>
+          </div>
+        </form>
+      `;
+      (ModalComponent || window.ModalComponent).show({
+        title: `📄 Add New Paper Size Option`,
+        bodyHTML: modalHTML,
+        width: '500px'
+      });
+    };
+
+    window.saveNewPaperSize = () => {
+      const name = document.getElementById('new-size-name')?.value.trim();
+      const baseRate = parseFloat(document.getElementById('new-size-rate')?.value) || 0;
+      const label = document.getElementById('new-size-label')?.value.trim();
+
+      if (!name || !label) {
+        NotificationService.showToast('Please fill out size name and label.', 'warning');
+        return;
+      }
+
+      if (!pricing.paperSizes) pricing.paperSizes = {};
+      pricing.paperSizes[name] = { baseRate, label };
+      PricingEngine.savePricingData(pricing);
+      if (window.ModalComponent) window.ModalComponent.close();
+      NotificationService.showToast(`Paper Size "${name}" added successfully!`, 'success');
+      this.renderPricing();
+    };
+
+    window.deletePaperSize = (sizeKey) => {
+      if (confirm(`🗑️ Delete Paper Size "${sizeKey}"? Customers will no longer be able to select this size.`)) {
+        delete pricing.paperSizes[sizeKey];
+        PricingEngine.savePricingData(pricing);
+        NotificationService.showToast(`Paper Size "${sizeKey}" deleted.`, 'info');
+        this.renderPricing();
+      }
+    };
+
+    // Paper Quality Add Modal & Handler
+    window.openAddPaperQualityModal = () => {
+      const modalHTML = `
+        <form id="add-paper-quality-form" onsubmit="event.preventDefault(); window.saveNewPaperQuality();">
+          <div class="form-group mb-3">
+            <label class="form-label">Paper Quality GSM / Type Name *</label>
+            <input type="text" class="form-control" id="new-quality-name" placeholder="E.g., 120 GSM, Velvet Matte, Canvas" required autofocus>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">Price Multiplier (e.g. 1.0 = standard, 1.5 = +50%) *</label>
+            <input type="number" step="0.1" min="0.1" class="form-control" id="new-quality-multiplier" value="1.5" required>
+          </div>
+          <div class="form-group mb-4">
+            <label class="form-label">Display Label *</label>
+            <input type="text" class="form-control" id="new-quality-label" placeholder="E.g., 120 GSM Heavy Cardstock" required>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+            <button type="button" class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close();">Cancel</button>
+            <button type="submit" class="btn btn-success">➕ Add Paper Quality</button>
+          </div>
+        </form>
+      `;
+      (ModalComponent || window.ModalComponent).show({
+        title: `📜 Add New Paper Quality (GSM)`,
+        bodyHTML: modalHTML,
+        width: '500px'
+      });
+    };
+
+    window.saveNewPaperQuality = () => {
+      const name = document.getElementById('new-quality-name')?.value.trim();
+      const multiplier = parseFloat(document.getElementById('new-quality-multiplier')?.value) || 1.0;
+      const label = document.getElementById('new-quality-label')?.value.trim();
+
+      if (!name || !label) {
+        NotificationService.showToast('Please fill out quality name and label.', 'warning');
+        return;
+      }
+
+      if (!pricing.paperQualities) pricing.paperQualities = {};
+      pricing.paperQualities[name] = { multiplier, label };
+      PricingEngine.savePricingData(pricing);
+      if (window.ModalComponent) window.ModalComponent.close();
+      NotificationService.showToast(`Paper Quality "${name}" added!`, 'success');
+      this.renderPricing();
+    };
+
+    window.deletePaperQuality = (qualityKey) => {
+      if (confirm(`🗑️ Delete Paper Quality "${qualityKey}"?`)) {
+        delete pricing.paperQualities[qualityKey];
+        PricingEngine.savePricingData(pricing);
+        NotificationService.showToast(`Paper Quality "${qualityKey}" deleted.`, 'info');
+        this.renderPricing();
+      }
+    };
+
+    // Binding Add/Edit Modal & Handler
+    window.openAddBindingModal = (bindingKey = null) => {
+      const item = bindingKey ? pricing.bindings[bindingKey] : null;
+      const modalHTML = `
+        <form id="add-binding-form" onsubmit="event.preventDefault(); window.saveNewBinding('${bindingKey || ''}');">
+          <div class="form-group mb-3">
+            <label class="form-label">Binding Type Name *</label>
+            <input type="text" class="form-control" id="new-binding-name" value="${bindingKey || ''}" placeholder="E.g., Spiral, Soft Cover, Hard Bound, Comb Binding" required ${bindingKey === 'None' ? 'readonly' : ''} autofocus>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">Price per Book (₹) *</label>
+            <input type="number" step="5" min="0" class="form-control" id="new-binding-price" value="${item ? item.price : 35}" required>
+          </div>
+          <div class="form-group mb-4">
+            <label class="form-label">Customer Explanation Text ("What is Binding?") *</label>
+            <textarea class="form-control" id="new-binding-desc" rows="3" placeholder="Explain what this binding option is for customers..." required>${item ? (item.description || item.label || '') : ''}</textarea>
+            <span style="font-size:0.72rem; color:var(--text-muted); margin-top:0.25rem; display:block;">This description is shown to customers when they click "ℹ️ What is binding?"</span>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+            <button type="button" class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close();">Cancel</button>
+            <button type="submit" class="btn btn-success">💾 ${bindingKey ? 'Update Binding Option' : 'Add Binding Option'}</button>
+          </div>
+        </form>
+      `;
+      (ModalComponent || window.ModalComponent).show({
+        title: bindingKey ? `✏️ Edit Binding Option: "${bindingKey}"` : `📚 Add New Book Binding Option`,
+        bodyHTML: modalHTML,
+        width: '560px'
+      });
+    };
+
+    window.saveNewBinding = (origKey = '') => {
+      const name = document.getElementById('new-binding-name')?.value.trim();
+      const price = parseFloat(document.getElementById('new-binding-price')?.value) || 0;
+      const description = document.getElementById('new-binding-desc')?.value.trim() || '';
+
+      if (!name) {
+        NotificationService.showToast('Please enter a binding name.', 'warning');
+        return;
+      }
+
+      if (!pricing.bindings) pricing.bindings = {};
+      if (origKey && origKey !== name) {
+        delete pricing.bindings[origKey];
+      }
+
+      pricing.bindings[name] = { price, description, label: description };
+      PricingEngine.savePricingData(pricing);
+      if (window.ModalComponent) window.ModalComponent.close();
+      NotificationService.showToast(`Binding Option "${name}" updated successfully!`, 'success');
+      this.renderPricing();
+    };
+
+    window.deleteBinding = (bindingKey) => {
+      if (confirm(`🗑️ Delete Binding Option "${bindingKey}"?`)) {
+        delete pricing.bindings[bindingKey];
+        PricingEngine.savePricingData(pricing);
+        NotificationService.showToast(`Binding Option "${bindingKey}" deleted.`, 'info');
+        this.renderPricing();
+      }
+    };
+
+    // Finishing / Lamination Add Modal & Handlers
+    window.openAddFinishingModal = () => {
+      const modalHTML = `
+        <form id="add-finishing-form" onsubmit="event.preventDefault(); window.saveNewFinishingOption();">
+          <div class="form-group mb-3">
+            <label class="form-label">Finishing Option Name *</label>
+            <input type="text" class="form-control" id="new-finishing-name" placeholder="E.g., Matt Velvet Lamination, Hole Punching, UV Gloss" required autofocus>
+          </div>
+          <div class="form-group mb-3">
+            <label class="form-label">Rate per Page / Unit (₹) *</label>
+            <input type="number" step="0.5" min="0" class="form-control" id="new-finishing-rate" value="15.00" required>
+          </div>
+          <div class="form-group mb-4">
+            <label class="form-label">Customer Display Label *</label>
+            <input type="text" class="form-control" id="new-finishing-label" placeholder="E.g., Premium Soft-Touch Velvet Thermal Lamination" required>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:0.75rem;">
+            <button type="button" class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close();">Cancel</button>
+            <button type="submit" class="btn btn-success">➕ Save Finishing Option</button>
+          </div>
+        </form>
+      `;
+      (ModalComponent || window.ModalComponent).show({
+        title: `🛡️ Add New Finishing / Lamination Option`,
+        bodyHTML: modalHTML,
+        width: '520px'
+      });
+    };
+
+    window.saveNewFinishingOption = () => {
+      const name = document.getElementById('new-finishing-name')?.value.trim();
+      const pricePerPage = parseFloat(document.getElementById('new-finishing-rate')?.value) || 0;
+      const label = document.getElementById('new-finishing-label')?.value.trim();
+
+      if (!name || !label) {
+        NotificationService.showToast('Please enter finishing name and display label.', 'warning');
+        return;
+      }
+
+      if (!pricing.lamination) pricing.lamination = {};
+      pricing.lamination[name] = { pricePerPage, label };
+      PricingEngine.savePricingData(pricing);
+      if (window.ModalComponent) window.ModalComponent.close();
+      NotificationService.showToast(`Finishing Option "${name}" added!`, 'success');
+      this.renderPricing();
+    };
+
+    window.deleteFinishingOption = (finishingKey) => {
+      if (finishingKey === 'No') {
+        NotificationService.showToast('Cannot delete default "No Lamination" option.', 'warning');
+        return;
+      }
+      if (confirm(`🗑️ Delete Finishing Option "${finishingKey}"?`)) {
+        if (pricing.lamination && pricing.lamination[finishingKey]) {
+          delete pricing.lamination[finishingKey];
+          PricingEngine.savePricingData(pricing);
+          NotificationService.showToast(`Finishing Option "${finishingKey}" deleted.`, 'info');
+          this.renderPricing();
+        }
+      }
     };
 
     window.openAddDeliveryZoneModal = () => {
@@ -886,6 +1436,10 @@ Thank you for choosing ${settings.shopName}!
     };
 
     window.deleteDeliveryZone = (zoneName) => {
+      if (zoneName === 'Pickup') {
+        NotificationService.showToast('Cannot delete default Store Pickup zone.', 'warning');
+        return;
+      }
       if (confirm(`Are you sure you want to delete delivery zone "${zoneName}"?`)) {
         if (pricing.deliveryZones && pricing.deliveryZones[zoneName]) {
           delete pricing.deliveryZones[zoneName];
@@ -1278,26 +1832,32 @@ Thank you for choosing ${settings.shopName}!
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;">
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1.25rem;">
             <div class="form-group">
-              <label class="form-label">Contact Phone</label>
-              <input type="text" class="form-control" id="st-phone" value="${settings.phone}">
+              <label class="form-label" style="font-weight:700;">Support Call Phone</label>
+              <input type="text" class="form-control" id="st-phone" value="${settings.phone || ''}">
             </div>
 
             <div class="form-group">
-              <label class="form-label">Contact Email</label>
-              <input type="email" class="form-control" id="st-email" value="${settings.email}">
+              <label class="form-label" style="font-weight:700; color:#059669;">💬 WhatsApp Business Phone *</label>
+              <input type="text" class="form-control" id="st-whatsapp" value="${settings.whatsappNumber || settings.phone || ''}" placeholder="E.g., 919789123456 or +91 97891 23456" style="border-color:rgba(16,185,129,0.5);">
+              <span style="font-size:0.72rem; color:var(--text-muted); margin-top:0.25rem; display:block;">Powers floating WhatsApp button, contact page & order chat links.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" style="font-weight:700;">Contact Email</label>
+              <input type="email" class="form-control" id="st-email" value="${settings.email || ''}">
             </div>
           </div>
 
           <div class="form-group">
             <label class="form-label">Shop Address</label>
-            <textarea class="form-control" id="st-address">${settings.address}</textarea>
+            <textarea class="form-control" id="st-address">${settings.address || ''}</textarea>
           </div>
 
           <div class="form-group">
             <label class="form-label">Google Map Embed URL</label>
-            <input type="text" class="form-control" id="st-map" value="${settings.googleMapUrl}">
+            <input type="text" class="form-control" id="st-map" value="${settings.googleMapUrl || ''}">
           </div>
         </div>
       </div>
@@ -1311,12 +1871,14 @@ Thank you for choosing ${settings.shopName}!
       settings.merchantName = document.getElementById('st-merchant').value;
       settings.gstNumber = document.getElementById('st-gst').value;
       settings.phone = document.getElementById('st-phone').value;
+      settings.whatsappNumber = document.getElementById('st-whatsapp').value.trim();
       settings.email = document.getElementById('st-email').value;
       settings.address = document.getElementById('st-address').value;
       settings.googleMapUrl = document.getElementById('st-map').value;
 
       await DBService.saveSettings(settings);
-      NotificationService.showToast('Shop Settings updated successfully!', 'success');
+      if (window.updateFloatingButtons) window.updateFloatingButtons();
+      NotificationService.showToast('Shop & WhatsApp Settings updated successfully!', 'success');
     };
   },
 
