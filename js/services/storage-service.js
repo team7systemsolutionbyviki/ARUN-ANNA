@@ -152,20 +152,21 @@ export const StorageService = {
       target = { url: fileObj };
     }
 
-    const url = target.url || '';
-    const idbKey = target.idbKey || (url.startsWith('idb://') ? url.replace('idb://', '') : '');
+    const url = target.url || target.screenshotUrl || '';
+    const dataUrl = target.dataUrl || target.screenshotDataUrl || target.fallbackData || '';
+    const idbKey = target.idbKey || target.screenshotIdbKey || (url.startsWith('idb://') ? url.replace('idb://', '') : '');
 
-    // Check blob cache first
+    // 1. Direct Web HTTPS, HTTP, Blob, or Data URLs (Works cross-device)
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+      return url;
+    }
+
+    // 2. Check in-memory blob cache
     if (idbKey && blobUrlCache.has(idbKey)) {
       return blobUrlCache.get(idbKey);
     }
 
-    // Direct web or blob URLs
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
-      return url;
-    }
-
-    // Fetch from IndexedDB if key exists
+    // 3. Try local IndexedDB (Same device)
     if (idbKey) {
       const blob = await this.getFromIDB(idbKey);
       if (blob) {
@@ -175,15 +176,15 @@ export const StorageService = {
       }
     }
 
-    // Fallback if data URL
-    if (url.startsWith('data:')) {
-      return url;
+    // 4. Fallback to Data URL if stored in file object (Cross-device fallback)
+    if (dataUrl && dataUrl.startsWith('data:')) {
+      return dataUrl;
     }
 
-    return url;
+    return url.startsWith('idb://') ? '' : url;
   },
 
-  // Read file as Data URL (kept as fallback for small images)
+  // Read file as Data URL (Base64 string)
   readFileAsDataURL(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -193,21 +194,30 @@ export const StorageService = {
     });
   },
 
-  // High-Speed Upload Function: Zero-latency IndexedDB local store + optional background Firebase upload
+  // Universal Cross-Device Upload Function: Firebase Cloud Storage + Base64 Data URL fallback + IndexedDB
   async uploadFile(file, pathFolder = 'uploads') {
     const idbKey = 'idb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
 
-    // Save to IndexedDB immediately (< 10ms for files up to 200MB)
+    // Save to IndexedDB immediately (< 10ms for local device fast access)
     const savedLocally = await this.saveToIDB(idbKey, file);
-    let objectUrl = '';
     if (savedLocally) {
-      objectUrl = URL.createObjectURL(file);
+      const objectUrl = URL.createObjectURL(file);
       blobUrlCache.set(idbKey, objectUrl);
     }
 
-    let downloadUrl = 'idb://' + idbKey;
+    let downloadUrl = '';
+    let dataUrl = '';
 
-    // Optional Firebase Storage upload in background/fast attempt
+    // Convert file to Base64 Data URL for universal fallback sync (files <= 25MB or images)
+    if (file.size <= 25 * 1024 * 1024) {
+      try {
+        dataUrl = await this.readFileAsDataURL(file);
+      } catch (e) {
+        console.warn("Data URL conversion warning:", e);
+      }
+    }
+
+    // Try Firebase Storage upload for universal cloud URL
     const { storage, isDemo } = getServices();
     if (!isDemo && storage) {
       try {
@@ -215,32 +225,38 @@ export const StorageService = {
           firebaseStorageModule = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js");
         }
         const { ref, uploadBytes, getDownloadURL } = firebaseStorageModule;
-        const fileRef = ref(storage, `${pathFolder}/${Date.now()}_${file.name}`);
+        const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileRef = ref(storage, `${pathFolder}/${Date.now()}_${cleanFileName}`);
 
-        // 5-second fast timeout for Firebase cloud sync attempt
+        // Try upload with 15 second timeout
         const uploadPromise = uploadBytes(fileRef, file).then(() => getDownloadURL(fileRef));
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Cloud upload timeout")), 5000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Cloud upload timeout")), 15000));
 
         const cloudUrl = await Promise.race([uploadPromise, timeoutPromise]);
         if (cloudUrl) {
           downloadUrl = cloudUrl;
         }
       } catch (err) {
-        console.warn("Cloud storage upload bypassed or timed out, using high-speed local store:", err);
+        console.warn("Firebase Cloud storage upload warning, using Data URL / local store:", err);
       }
-    } else if (!savedLocally && file.size < 5 * 1024 * 1024) {
-      // Fallback to Data URL for tiny files if IndexedDB is somehow unavailable
-      try {
-        downloadUrl = await this.readFileAsDataURL(file);
-      } catch (e) {}
+    }
+
+    // Final downloadUrl resolution order: Cloud HTTPS URL -> Data URL -> idb:// key
+    if (!downloadUrl) {
+      if (dataUrl) {
+        downloadUrl = dataUrl;
+      } else {
+        downloadUrl = 'idb://' + idbKey;
+      }
     }
 
     return {
       url: downloadUrl,
+      dataUrl: dataUrl,
       idbKey: idbKey,
       name: file.name,
       size: this.formatBytes(file.size),
-      type: file.type || 'application/octet-stream'
+      type: file.type || 'application/pdf'
     };
   },
 

@@ -865,6 +865,7 @@ export const PublicViews = {
             name: file.name,
             size: uploaded.size || 'N/A',
             url: uploaded.url || '',
+            dataUrl: uploaded.dataUrl || '',
             idbKey: uploaded.idbKey || '',
             pages: estPages || 1,
             options: defaultFileOptions(estPages || 1)
@@ -1290,13 +1291,16 @@ export const PublicViews = {
         try {
           let screenshotUrl = '';
           let screenshotIdbKey = '';
+          let screenshotDataUrl = '';
           if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
             try {
-              const uploaded = await StorageService.uploadFile(screenshotInput.files[0], 'receipts');
-              screenshotUrl = uploaded.url || '';
+              const screenshotFile = screenshotInput.files[0];
+              screenshotDataUrl = await StorageService.readFileAsDataURL(screenshotFile);
+              const uploaded = await StorageService.uploadFile(screenshotFile, 'receipts');
+              screenshotUrl = uploaded.url || screenshotDataUrl || '';
               screenshotIdbKey = uploaded.idbKey || '';
             } catch (err) {
-              console.warn('Screenshot processing failed, proceeding without screenshot:', err);
+              console.warn('Screenshot processing failed, proceeding with dataUrl:', err);
             }
           }
 
@@ -1311,6 +1315,7 @@ export const PublicViews = {
               name: f.name,
               size: f.size,
               url: f.url,
+              dataUrl: f.dataUrl || '',
               idbKey: f.idbKey || '',
               pages: f.pages,
               options: f.options
@@ -1321,7 +1326,8 @@ export const PublicViews = {
               method: 'UPI QR',
               utr: utr,
               payerName: payerName,
-              screenshotUrl: screenshotUrl,
+              screenshotUrl: screenshotUrl || screenshotDataUrl,
+              screenshotDataUrl: screenshotDataUrl,
               screenshotIdbKey: screenshotIdbKey,
               status: 'Waiting Verification'
             }

@@ -605,16 +605,38 @@ export const AdminViews = {
       }
 
       const pay = order.payment || {};
+      const possibleUrl = pay.screenshotUrl || pay.screenshotDataUrl || pay.screenshot || order.screenshotUrl || '';
+      const possibleDataUrl = pay.screenshotDataUrl || pay.fallbackData || (possibleUrl.startsWith('data:') ? possibleUrl : '');
+      const possibleIdbKey = pay.screenshotIdbKey || (possibleUrl.startsWith('idb://') ? possibleUrl.replace('idb://', '') : '');
+
+      const screenshotUrl = await StorageService.getFileUrl({ 
+        url: possibleUrl, 
+        dataUrl: possibleDataUrl, 
+        idbKey: possibleIdbKey 
+      });
+
       let bodyHTML = '';
-      const screenshotUrl = await StorageService.getFileUrl({ url: pay.screenshotUrl, idbKey: pay.screenshotIdbKey });
 
       if (screenshotUrl && screenshotUrl.trim() !== '') {
         bodyHTML = `
           <div style="text-align:center; padding:0.5rem;">
-            <img src="${screenshotUrl}" alt="Payment Screenshot" style="max-width:100%; max-height:65vh; border-radius:12px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); display:inline-block;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-center text-muted\\' style=\\'padding:2rem;\\'>⚠️ Screenshot preview unavailable or expired.<br><a href=\\'${screenshotUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm btn-primary mt-2\\'>Open Link in New Tab</a></div>';" />
-            <div style="margin-top:1rem; font-size:0.9rem; background:var(--bg-card); padding:0.75rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-              <div>UTR / Ref: <b style="color:var(--primary); font-family:monospace;">${pay.utr || 'N/A'}</b></div>
+            <div style="background:var(--bg-card); padding:0.75rem 1rem; border-radius:8px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+              <div>UTR / Ref: <b style="color:var(--primary); font-family:monospace; font-size:1rem;">${pay.utr || 'N/A'}</b></div>
               <div>Payer Name: <b>${pay.payerName || order.customerName}</b></div>
+            </div>
+            
+            <div style="position:relative; display:inline-block; max-width:100%;">
+              <img src="${screenshotUrl}" alt="Payment Screenshot" style="max-width:100%; max-height:65vh; border-radius:12px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); display:inline-block; object-fit:contain;" 
+                onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\'text-center text-muted\\' style=\\'padding:2rem;\\'>⚠️ Screenshot preview unavailable on this device.<br><a href=\\'${screenshotUrl}\\' target=\\'_blank\\' class=\\'btn btn-sm btn-primary mt-2\\'>Open Screenshot Link ↗</a></div>';" />
+            </div>
+
+            <div style="margin-top:1rem; display:flex; gap:0.75rem; justify-content:center;">
+              <a href="${screenshotUrl}" target="_blank" download="Payment_Receipt_${orderId}.png" class="btn btn-sm btn-primary">
+                📥 Download Screenshot
+              </a>
+              <a href="${screenshotUrl}" target="_blank" class="btn btn-sm btn-outline">
+                🔗 Open in New Tab ↗
+              </a>
             </div>
           </div>
         `;
@@ -623,14 +645,14 @@ export const AdminViews = {
           <div style="background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); color:white; padding:2rem; border-radius:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); padding-bottom:1rem; margin-bottom:1.5rem;">
               <div>
-                <div style="color:#10b981; font-weight:700; font-size:0.85rem; text-transform:uppercase;">✓ UPI Payment Verification</div>
+                <div style="color:#10b981; font-weight:700; font-size:0.85rem; text-transform:uppercase;">✓ UPI Payment Details Submitted</div>
                 <h3 style="font-size:1.4rem; margin-top:0.2rem;">TEAM 7 SYSTEM SOLUTION</h3>
               </div>
               <div style="font-size:2.5rem;">📱</div>
             </div>
 
             <div style="margin-bottom:1.5rem;">
-              <div style="font-size:0.8rem; color:#94a3b8; text-transform:uppercase;">Total Amount Paid</div>
+              <div style="font-size:0.8rem; color:#94a3b8; text-transform:uppercase;">Total Amount Payable</div>
               <div style="font-size:2.25rem; font-weight:800; color:#38bdf8;">${formatCurrency(order.pricing?.total)}</div>
             </div>
 
@@ -645,8 +667,8 @@ export const AdminViews = {
               </div>
             </div>
 
-            <div style="margin-top:1.25rem; font-size:0.8rem; color:#94a3b8; text-align:center;">
-              No payment screenshot file was attached for this order.
+            <div style="margin-top:1.25rem; font-size:0.82rem; color:#94a3b8; text-align:center; background:rgba(255,255,255,0.04); padding:0.75rem; border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
+              ℹ️ Customer submitted payment with UTR Ref <b>${pay.utr || 'N/A'}</b> & Payer Name <b>${pay.payerName || order.customerName}</b> without attaching an optional screenshot image.
             </div>
           </div>
         `;
