@@ -171,6 +171,34 @@ export const DBService = {
     }
   },
 
+  // Strip base64 dataUrls for cloud (Firestore has 1MB doc limit) — keeps HTTPS URLs intact
+  sanitizeForCloud(order) {
+    if (!order) return order;
+    try {
+      const cloud = JSON.parse(JSON.stringify(order));
+      if (cloud.files && Array.isArray(cloud.files)) {
+        cloud.files.forEach(f => {
+          // Keep Firebase Storage HTTPS URL; remove raw base64 from cloud
+          if (f.dataUrl) delete f.dataUrl;
+          if (f.url && f.url.startsWith('data:')) {
+            f.url = f.idbKey ? ('idb://' + f.idbKey) : '[local-only]';
+          }
+        });
+      }
+      if (cloud.payment) {
+        if (cloud.payment.screenshotDataUrl) delete cloud.payment.screenshotDataUrl;
+        if (cloud.payment.screenshotUrl && cloud.payment.screenshotUrl.startsWith('data:')) {
+          cloud.payment.screenshotUrl = cloud.payment.screenshotIdbKey
+            ? ('idb://' + cloud.payment.screenshotIdbKey)
+            : '[local-only]';
+        }
+      }
+      return cloud;
+    } catch (e) {
+      return order;
+    }
+  },
+
   // Create new Order (Dual Sync: Firestore + Firebase Realtime Database)
   async createOrder(orderData) {
     this.initLocalStore();
@@ -197,11 +225,13 @@ export const DBService = {
     // Save Cloud: Firestore + Realtime Database
     const { db, firebaseApp, isDemo } = getServices();
     if (!isDemo && firebaseApp) {
+      const cloudOrder = this.sanitizeForCloud(newOrder); // Strip base64 to stay under Firestore 1MB limit
+
       // 1. Firestore insert
       if (db) {
         try {
           const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-          await setDoc(doc(db, "orders", newId), newOrder);
+          await setDoc(doc(db, "orders", newId), cloudOrder);
           console.log("✅ Order synced to Firestore:", newId);
         } catch (err) {
           console.warn("Firestore order insert warning:", err);
@@ -212,7 +242,7 @@ export const DBService = {
       try {
         const { getDatabase, ref, set } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
         const rtdb = getDatabase(firebaseApp);
-        await set(ref(rtdb, 'orders/' + newId), newOrder);
+        await set(ref(rtdb, 'orders/' + newId), cloudOrder);
         console.log("✅ Order synced to Realtime Database:", newId);
       } catch (err) {
         console.warn("RTDB order insert warning:", err);

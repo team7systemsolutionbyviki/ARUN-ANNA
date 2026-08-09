@@ -49,5 +49,5 @@ export async function initFirebase() {
 }
 
 export function getServices() {
-  return { db, auth, storage, isDemo: !isFirebaseConfigured() };
+  return { db, auth, storage, firebaseApp, isDemo: !isFirebaseConfigured() };
 }
