@@ -23,13 +23,13 @@ let db = null;
 let auth = null;
 let storage = null;
 
-// Initialize Firebase if configured dynamically
+// Initialize Firebase with Eager SDK Loading and Anonymous Authentication for Storage permissions
 export async function initFirebase() {
   if (isFirebaseConfigured()) {
     try {
       const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js");
       const { getFirestore } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-      const { getAuth } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
+      const { getAuth, signInAnonymously, onAuthStateChanged } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
       const { getStorage } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js");
 
       firebaseApp = initializeApp(firebaseConfig);
@@ -37,7 +37,17 @@ export async function initFirebase() {
       auth = getAuth(firebaseApp);
       storage = getStorage(firebaseApp);
 
-      console.log("Firebase initialized successfully.");
+      // Ensure Anonymous Auth session is active so Firebase Storage security rules allow uploads
+      if (auth && !auth.currentUser) {
+        try {
+          await signInAnonymously(auth);
+          console.log("🔒 Firebase Anonymous Auth signed in:", auth.currentUser?.uid);
+        } catch (authErr) {
+          console.warn("Firebase Anonymous Auth warning (proceeding):", authErr);
+        }
+      }
+
+      console.log("✅ Firebase initialized successfully with Storage bucket:", firebaseConfig.storageBucket);
       return { firebaseApp, db, auth, storage, mode: 'FIREBASE' };
     } catch (err) {
       console.warn("Firebase SDK load error, falling back to Local Storage Engine:", err);
