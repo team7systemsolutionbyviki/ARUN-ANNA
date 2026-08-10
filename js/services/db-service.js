@@ -133,6 +133,29 @@ export const DBService = {
       const cleanOrders = merged.map(o => this.sanitizeOrderForStorage(o));
       localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
     } catch (e) {}
+
+    // Background: auto-delete expired Firebase Storage files (non-blocking)
+    setTimeout(async () => {
+      try {
+        const { StorageService } = await import('./storage-service.js');
+        await StorageService.cleanupExpiredFiles(merged, async (updatedOrder) => {
+          await this.updateOrderInCloud(updatedOrder);
+          // Update localStorage too
+          try {
+            const localStr = localStorage.getItem(ORDERS_KEY);
+            if (localStr) {
+              const stored = JSON.parse(localStr);
+              const idx = stored.findIndex(o => o.id === updatedOrder.id);
+              if (idx !== -1) {
+                stored[idx] = this.sanitizeOrderForStorage(updatedOrder);
+                localStorage.setItem(ORDERS_KEY, JSON.stringify(stored));
+              }
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
+    }, 2000);
+
     return merged;
   },
 
@@ -178,11 +201,13 @@ export const DBService = {
       const cloud = JSON.parse(JSON.stringify(order));
       if (cloud.files && Array.isArray(cloud.files)) {
         cloud.files.forEach(f => {
-          // Keep Firebase Storage HTTPS URL; remove raw base64 from cloud
+          // Keep Firebase Storage HTTPS URL + expiry metadata; remove raw base64
           if (f.dataUrl) delete f.dataUrl;
           if (f.url && f.url.startsWith('data:')) {
             f.url = f.idbKey ? ('idb://' + f.idbKey) : '[local-only]';
           }
+          // Always preserve: storagePath, uploadedAt, expiresAt, expired flag
+          // (these are needed for server-side/client-side auto-deletion)
         });
       }
       if (cloud.payment) {
@@ -197,6 +222,25 @@ export const DBService = {
     } catch (e) {
       return order;
     }
+  },
+
+  // Update a single order record in Firestore + RTDB (used by cleanup callback)
+  async updateOrderInCloud(order) {
+    if (!order || !order.id) return;
+    const { db, firebaseApp, isDemo } = getServices();
+    if (isDemo || !firebaseApp) return;
+    const cloudOrder = this.sanitizeForCloud(order);
+    if (db) {
+      try {
+        const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+        await setDoc(doc(db, 'orders', order.id), cloudOrder);
+      } catch (e) {}
+    }
+    try {
+      const { getDatabase, ref, set } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js');
+      const rtdb = getDatabase(firebaseApp);
+      await set(ref(rtdb, 'orders/' + order.id), cloudOrder);
+    } catch (e) {}
   },
 
   // Create new Order (Dual Sync: Firestore + Firebase Realtime Database)

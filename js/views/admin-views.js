@@ -365,15 +365,33 @@ export const AdminViews = {
                     </div>
                   </td>
                   <td>
-                    ${filesList.map((f, fIdx) => `
+                    ${filesList.map((f, fIdx) => {
+      const isExpired = f.expired === true;
+      const expiresAt = f.expiresAt ? new Date(f.expiresAt) : null;
+      const daysLeft = expiresAt ? Math.ceil((expiresAt - Date.now()) / (1000 * 3600 * 24)) : null;
+      let expiryBadge = '';
+      if (isExpired) {
+        expiryBadge = `<span style="background:rgba(239,68,68,0.12); color:#dc2626; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px; border:1px solid rgba(239,68,68,0.3);">🗑️ Deleted</span>`;
+      } else if (daysLeft !== null) {
+        const color = daysLeft <= 1 ? '#dc2626' : daysLeft <= 3 ? '#d97706' : '#059669';
+        const bg = daysLeft <= 1 ? 'rgba(239,68,68,0.1)' : daysLeft <= 3 ? 'rgba(217,119,6,0.1)' : 'rgba(5,150,105,0.1)';
+        expiryBadge = `<span style="background:${bg}; color:${color}; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px; border:1px solid ${bg.replace('0.1','0.3')};">⏰ ${daysLeft}d left</span>`;
+      }
+      return `
                       <div style="margin-bottom:0.5rem; background:var(--bg-card); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid var(--border-color);">
-                        <div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" title="${f.name || 'Document.pdf'}">📄 ${f.name || `Document_${fIdx + 1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span></div>
-                        <div style="display:flex; gap:0.35rem; margin-top:0.25rem;">
-                          <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.previewOrderFile('${o.id}', ${fIdx})">👁️ Preview</button>
-                          <button class="btn btn-sm btn-primary" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.downloadOrderFile('${o.id}', ${fIdx})">📥 Download</button>
+                        <div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; display:flex; align-items:center; gap:0.3rem;" title="${f.name || 'Document.pdf'}">
+                          📄 ${f.name || `Document_${fIdx + 1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span>
+                          ${expiryBadge}
                         </div>
+                        ${isExpired
+                          ? `<div style="font-size:0.72rem; color:#dc2626; margin-top:0.25rem;">🔒 File deleted (privacy protection after 7 days)</div>`
+                          : `<div style="display:flex; gap:0.35rem; margin-top:0.25rem;">
+                               <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.previewOrderFile('${o.id}', ${fIdx})">👁️ Preview</button>
+                               <button class="btn btn-sm btn-primary" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.downloadOrderFile('${o.id}', ${fIdx})">📥 Download</button>
+                             </div>`
+                        }
                       </div>
-                    `).join('')}
+                    `; }).join('')}
                   </td>
                   <td style="min-width:230px;">
                     ${filesList.map((f, fIdx) => {

@@ -197,6 +197,8 @@ export const StorageService = {
   // Universal Cross-Device Upload Function: Firebase Cloud Storage + Base64 Data URL fallback + IndexedDB
   async uploadFile(file, pathFolder = 'uploads') {
     const idbKey = 'idb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const uploadedAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(); // 7 days
 
     // Save to IndexedDB immediately (< 10ms for local device fast access)
     const savedLocally = await this.saveToIDB(idbKey, file);
@@ -207,13 +209,14 @@ export const StorageService = {
 
     let downloadUrl = '';
     let dataUrl = '';
+    let storagePath = ''; // Firebase Storage path (needed for deletion)
 
-    // Convert file to Base64 Data URL for universal fallback sync (files <= 25MB or images)
-    if (file.size <= 25 * 1024 * 1024) {
+    // Convert file to Base64 Data URL for universal fallback sync (files <= 10MB)
+    if (file.size <= 10 * 1024 * 1024) {
       try {
         dataUrl = await this.readFileAsDataURL(file);
       } catch (e) {
-        console.warn("Data URL conversion warning:", e);
+        console.warn('Data URL conversion warning:', e);
       }
     }
 
@@ -222,26 +225,29 @@ export const StorageService = {
     if (!isDemo && storage) {
       try {
         if (!firebaseStorageModule) {
-          firebaseStorageModule = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js");
+          firebaseStorageModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js');
         }
         const { ref, uploadBytes, getDownloadURL } = firebaseStorageModule;
         const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const fileRef = ref(storage, `${pathFolder}/${Date.now()}_${cleanFileName}`);
+        storagePath = `${pathFolder}/${Date.now()}_${cleanFileName}`;
+        const fileRef = ref(storage, storagePath);
 
-        // Try upload with 15 second timeout
+        // Upload with 20 second timeout
         const uploadPromise = uploadBytes(fileRef, file).then(() => getDownloadURL(fileRef));
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Cloud upload timeout")), 15000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Cloud upload timeout')), 20000));
 
         const cloudUrl = await Promise.race([uploadPromise, timeoutPromise]);
         if (cloudUrl) {
           downloadUrl = cloudUrl;
+          console.log('✅ File uploaded to Firebase Storage:', storagePath);
         }
       } catch (err) {
-        console.warn("Firebase Cloud storage upload warning, using Data URL / local store:", err);
+        console.warn('Firebase Storage upload warning, falling back to Data URL:', err);
+        storagePath = ''; // clear path if upload failed
       }
     }
 
-    // Final downloadUrl resolution order: Cloud HTTPS URL -> Data URL -> idb:// key
+    // Final downloadUrl resolution: Cloud HTTPS URL -> Data URL -> idb:// key
     if (!downloadUrl) {
       if (dataUrl) {
         downloadUrl = dataUrl;
@@ -254,10 +260,61 @@ export const StorageService = {
       url: downloadUrl,
       dataUrl: dataUrl,
       idbKey: idbKey,
+      storagePath: storagePath,  // Firebase Storage path for future deletion
+      uploadedAt: uploadedAt,
+      expiresAt: expiresAt,      // Auto-delete after 7 days
       name: file.name,
       size: this.formatBytes(file.size),
       type: file.type || 'application/pdf'
     };
+  },
+
+  // Delete a file from Firebase Storage by its storagePath
+  async deleteFileByPath(storagePath) {
+    if (!storagePath || storagePath === '') return false;
+    const { storage, isDemo } = getServices();
+    if (isDemo || !storage) return false;
+    try {
+      if (!firebaseStorageModule) {
+        firebaseStorageModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js');
+      }
+      const { ref, deleteObject } = firebaseStorageModule;
+      await deleteObject(ref(storage, storagePath));
+      console.log('🗑️ Firebase Storage file deleted:', storagePath);
+      return true;
+    } catch (err) {
+      // File may already be deleted or path not found — not an error
+      console.warn('Storage delete warning (may already be deleted):', storagePath, err.code);
+      return false;
+    }
+  },
+
+  // Auto-cleanup: delete expired Firebase Storage files (called on admin order load)
+  async cleanupExpiredFiles(orders, updateOrderCallback) {
+    if (!orders || orders.length === 0) return;
+    const now = Date.now();
+    for (const order of orders) {
+      if (!order.files) continue;
+      let changed = false;
+      for (const f of order.files) {
+        if (f.expired) continue; // already marked expired
+        if (!f.expiresAt) continue; // no expiry set (old order)
+        if (new Date(f.expiresAt).getTime() > now) continue; // not yet expired
+        // Expired — delete from Firebase Storage
+        if (f.storagePath) {
+          await this.deleteFileByPath(f.storagePath);
+        }
+        // Mark file as expired in the record
+        f.expired = true;
+        f.url = '';
+        f.dataUrl = '';
+        f.storagePath = '';
+        changed = true;
+      }
+      if (changed && typeof updateOrderCallback === 'function') {
+        await updateOrderCallback(order);
+      }
+    }
   },
 
   // Helper format bytes
