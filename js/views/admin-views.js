@@ -366,28 +366,44 @@ export const AdminViews = {
                   </td>
                   <td>
                     ${filesList.map((f, fIdx) => {
-      const isExpired = f.expired === true;
+      const isExpired = f.uploadStatus === 'expired' || f.expired === true;
+      const isUploaded = f.uploadStatus === 'uploaded' || (!isExpired && (f.downloadURL || f.url));
       const expiresAt = f.expiresAt ? new Date(f.expiresAt) : null;
-      const daysLeft = expiresAt ? Math.ceil((expiresAt - Date.now()) / (1000 * 3600 * 24)) : null;
-      let expiryBadge = '';
+      const daysLeft = expiresAt && !isExpired ? Math.ceil((expiresAt - Date.now()) / (1000 * 3600 * 24)) : null;
+
+      let statusBadge = '';
       if (isExpired) {
-        expiryBadge = `<span style="background:rgba(239,68,68,0.12); color:#dc2626; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px; border:1px solid rgba(239,68,68,0.3);">🗑️ Deleted</span>`;
-      } else if (daysLeft !== null) {
-        const color = daysLeft <= 1 ? '#dc2626' : daysLeft <= 3 ? '#d97706' : '#059669';
-        const bg = daysLeft <= 1 ? 'rgba(239,68,68,0.1)' : daysLeft <= 3 ? 'rgba(217,119,6,0.1)' : 'rgba(5,150,105,0.1)';
-        expiryBadge = `<span style="background:${bg}; color:${color}; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px; border:1px solid ${bg.replace('0.1','0.3')};">⏰ ${daysLeft}d left</span>`;
+        statusBadge = `<span style="background:rgba(239,68,68,0.12); color:#dc2626; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px; border:1px solid rgba(239,68,68,0.3);">🔒 File Expired</span>`;
+      } else if (isUploaded) {
+        statusBadge = `<span style="background:rgba(16,185,129,0.14); color:#059669; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px; border:1px solid rgba(16,185,129,0.3);">✓ File Uploaded</span>`;
+      } else if (f.uploadStatus === 'failed') {
+        statusBadge = `<span style="background:rgba(239,68,68,0.12); color:#dc2626; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px;">✕ Upload Failed</span>`;
+      } else {
+        statusBadge = `<span style="background:rgba(59,130,246,0.12); color:#2563eb; font-size:0.68rem; font-weight:700; padding:0.12rem 0.4rem; border-radius:5px;">⏳ Uploading</span>`;
       }
+
+      let expiryNote = '';
+      if (daysLeft !== null && daysLeft > 0) {
+        expiryNote = `<span style="font-size:0.68rem; color:var(--text-muted); margin-left:0.3rem;">(⏰ ${daysLeft}d left)</span>`;
+      }
+
+      const fileName = f.fileName || f.name || `Document_${fIdx + 1}.pdf`;
+      const fileSize = f.fileSize || f.size || 'N/A';
+
       return `
-                      <div style="margin-bottom:0.5rem; background:var(--bg-card); padding:0.4rem 0.6rem; border-radius:6px; border:1px solid var(--border-color);">
-                        <div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; display:flex; align-items:center; gap:0.3rem;" title="${f.name || 'Document.pdf'}">
-                          📄 ${f.name || `Document_${fIdx + 1}.pdf`} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span>
-                          ${expiryBadge}
+                      <div style="margin-bottom:0.5rem; background:var(--bg-card); padding:0.5rem 0.65rem; border-radius:8px; border:1px solid var(--border-color);">
+                        <div style="font-size:0.82rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; display:flex; align-items:center; gap:0.3rem;" title="${fileName}">
+                          📄 ${fileName} <span style="font-size:0.7rem; color:var(--text-muted);">(${f.pages || 1} pgs)</span>
+                        </div>
+                        <div style="margin-top:0.25rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.25rem;">
+                          ${statusBadge} ${expiryNote}
                         </div>
                         ${isExpired
-                          ? `<div style="font-size:0.72rem; color:#dc2626; margin-top:0.25rem;">🔒 File deleted (privacy protection after 7 days)</div>`
-                          : `<div style="display:flex; gap:0.35rem; margin-top:0.25rem;">
-                               <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.previewOrderFile('${o.id}', ${fIdx})">👁️ Preview</button>
-                               <button class="btn btn-sm btn-primary" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="window.downloadOrderFile('${o.id}', ${fIdx})">📥 Download</button>
+                          ? `<div style="font-size:0.72rem; color:#dc2626; margin-top:0.3rem; font-weight:600;">🔒 Original file deleted from cloud after 7 days (privacy protected)</div>`
+                          : `<div style="display:flex; gap:0.3rem; margin-top:0.35rem; flex-wrap:wrap;">
+                               <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.45rem;" onclick="window.previewOrderFile('${o.id}', ${fIdx})">👁️ Preview</button>
+                               <button class="btn btn-sm btn-primary" style="font-size:0.7rem; padding:0.15rem 0.45rem;" onclick="window.downloadOrderFile('${o.id}', ${fIdx})">📥 Download</button>
+                               <button class="btn btn-sm btn-success" style="font-size:0.7rem; padding:0.15rem 0.45rem;" onclick="window.printOrderFile('${o.id}', ${fIdx})">🖨️ Print</button>
                              </div>`
                         }
                       </div>
@@ -553,71 +569,120 @@ export const AdminViews = {
     window.downloadOrderFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
       if (!order || !order.files || !order.files[fileIndex]) {
-        NotificationService.showToast('File not found', 'error');
+        NotificationService.showToast('File record not found.', 'error');
         return;
       }
       const file = order.files[fileIndex];
-      const url = await StorageService.getFileUrl(file);
+      if (file.uploadStatus === 'expired' || file.expired) {
+        NotificationService.showToast('File has expired and was deleted from cloud storage after 7 days.', 'warning');
+        return;
+      }
+
+      const url = file.downloadURL || file.url || await StorageService.getFileUrl(file);
 
       if (!url) {
-        NotificationService.showToast('File data URL unavailable', 'error');
+        NotificationService.showToast('File download URL unavailable.', 'error');
         return;
       }
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = file.name || `Document_${orderId}.pdf`;
+      a.download = file.fileName || file.name || `Document_${orderId}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      NotificationService.showToast(`Downloading ${file.name}...`, 'success');
+      NotificationService.showToast(`Downloading original file: ${file.fileName || file.name}...`, 'success');
+    };
+
+    window.printOrderFile = async (orderId, fileIndex) => {
+      const order = await DBService.getOrderById(orderId);
+      if (!order || !order.files || !order.files[fileIndex]) {
+        NotificationService.showToast('File record not found.', 'error');
+        return;
+      }
+      const file = order.files[fileIndex];
+      if (file.uploadStatus === 'expired' || file.expired) {
+        NotificationService.showToast('File has expired and was deleted from cloud storage.', 'warning');
+        return;
+      }
+
+      const url = file.downloadURL || file.url || await StorageService.getFileUrl(file);
+      if (!url) {
+        NotificationService.showToast('File print URL unavailable.', 'error');
+        return;
+      }
+
+      const printWin = window.open(url, '_blank');
+      if (printWin) {
+        NotificationService.showToast(`Opening document for native printing...`, 'info');
+      } else {
+        window.location.href = url;
+      }
     };
 
     window.previewOrderFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
       if (!order || !order.files || !order.files[fileIndex]) {
-        NotificationService.showToast('File not found', 'error');
+        NotificationService.showToast('File record not found.', 'error');
         return;
       }
       const file = order.files[fileIndex];
+      const fileName = file.fileName || file.name || 'Document.pdf';
+      const fileSize = file.fileSize || file.size || 'N/A';
+      const fileType = file.fileType || file.type || '';
+      const isExpired = file.uploadStatus === 'expired' || file.expired === true;
+
+      if (isExpired) {
+        (ModalComponent || window.ModalComponent).show({
+          title: `🔒 File Expired - ${fileName}`,
+          bodyHTML: `
+            <div style="text-align:center; padding:2.5rem 1.5rem; background:rgba(239,68,68,0.06); border-radius:14px; border:2px dashed #ef4444;">
+              <div style="font-size:3.5rem; margin-bottom:0.5rem;">🔒</div>
+              <h3 style="font-size:1.3rem; color:#dc2626; font-weight:800;">Original File Expired & Deleted</h3>
+              <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.5rem; max-width:500px; margin-left:auto; margin-right:auto;">
+                The original file <b>${fileName}</b> (${fileSize}) was automatically deleted from cloud storage 7 days after upload to protect customer data privacy.
+              </p>
+              <div style="margin-top:1rem; font-size:0.8rem; color:var(--text-muted);">
+                Order history and print specifications remain preserved in Firestore.
+              </div>
+            </div>
+          `,
+          width: '600px'
+        });
+        return;
+      }
+
+      const viewUrl = file.downloadURL || file.url || await StorageService.getFileUrl(file);
+
+      const isDocx = fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileType.includes('word');
+      const isImage = fileType.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+
       let previewHTML = '';
 
-      const viewUrl = await StorageService.getFileUrl(file);
-
-      const isImageDataUri = viewUrl && viewUrl.startsWith('data:image');
-      const isImageFileExt = (viewUrl && viewUrl.match(/\.(jpeg|jpg|png|gif|webp|svg)(\?.*)?$/i)) ||
-        (file.name && file.name.match(/\.(jpeg|jpg|png|gif|webp|svg)$/i));
-
-      const isImage = isImageDataUri || isImageFileExt;
-
-      if (isImage) {
+      if (isDocx) {
         previewHTML = `
-          <div style="text-align:center; padding:0.5rem; background:var(--bg-card); border-radius:8px;">
-            <img src="${viewUrl}" alt="${file.name}" style="max-width:100%; max-height:68vh; border-radius:8px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); object-fit:contain;" />
+          <div style="text-align:center; padding:3rem 2rem; background:var(--bg-card); border-radius:14px; border:1px solid var(--border-color);">
+            <div style="font-size:4rem; margin-bottom:0.75rem;">📝</div>
+            <h3 style="font-size:1.35rem; font-weight:800; color:var(--text-main);">${fileName}</h3>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.35rem;">
+              Microsoft Word Document • ${fileSize} • ~${file.pages || 1} pages
+            </p>
+            <div style="margin-top:1.5rem; background:var(--bg-body); padding:1rem; border-radius:10px; border:1px solid var(--border-color); font-size:0.85rem; color:var(--text-muted); max-width:520px; margin-left:auto; margin-right:auto;">
+              ℹ️ DOCX files cannot be rendered natively inside browser iframes. Click <b>Download DOCX</b> below to view or print in Microsoft Word.
+            </div>
           </div>
         `;
-      } else if (viewUrl) {
+      } else if (isImage) {
         previewHTML = `
-          <div style="width:100%; height:68vh; background:var(--bg-card); border-radius:8px; overflow:hidden; border:1px solid var(--border-color);">
-            <object data="${viewUrl}" type="application/pdf" style="width:100%; height:100%;">
-              <iframe src="${viewUrl}" style="width:100%; height:100%; border:none;">
-                <div style="text-align:center; padding:3rem 2rem;">
-                  <div style="font-size:3.5rem; margin-bottom:0.5rem;">📄</div>
-                  <h3 style="font-size:1.3rem;">${file.name}</h3>
-                  <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.35rem;">Size: ${file.size || 'N/A'} • ~${file.pages || 1} page(s)</p>
-                  <button class="btn btn-sm btn-primary mt-2" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">Open Document in New Tab ↗</button>
-                </div>
-              </iframe>
-            </object>
+          <div style="text-align:center; padding:0.5rem; background:var(--bg-card); border-radius:8px;">
+            <img src="${viewUrl}" alt="${fileName}" style="max-width:100%; max-height:68vh; border-radius:8px; border:1px solid var(--border-color); box-shadow:var(--shadow-md); object-fit:contain;" />
           </div>
         `;
       } else {
+        // PDF or General Document
         previewHTML = `
-          <div style="text-align:center; padding:3rem 2rem; background:var(--primary-light); border-radius:12px;">
-            <div style="font-size:3.5rem; margin-bottom:0.5rem;">📄</div>
-            <h3 style="font-size:1.3rem;">${file.name}</h3>
-            <p style="color:var(--text-muted); font-size:0.875rem; margin-top:0.35rem;">Size: ${file.size || 'N/A'} • ~${file.pages || 1} page(s)</p>
-            <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.75rem;">(Sample document record without local binary preview attached)</p>
+          <div style="width:100%; height:70vh; background:var(--bg-card); border-radius:8px; overflow:hidden; border:1px solid var(--border-color);">
+            <iframe src="${viewUrl}" style="width:100%; height:100%; border:none;"></iframe>
           </div>
         `;
       }
@@ -625,19 +690,19 @@ export const AdminViews = {
       const modal = ModalComponent || window.ModalComponent;
       if (modal) {
         modal.show({
-          title: `Document Preview - ${file.name}`,
+          title: `Document Preview - ${fileName}`,
           bodyHTML: previewHTML,
           footerHTML: `
-            ${viewUrl ? `<button class="btn btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download File</button>` : ''}
-            ${viewUrl ? `<button class="btn btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open Full Screen ↗</button>` : ''}
+            ${viewUrl ? `<button class="btn btn-primary" onclick="window.downloadOrderFile('${orderId}', ${fileIndex})">📥 Download Original File</button>` : ''}
+            ${viewUrl ? `<button class="btn btn-success" onclick="window.printOrderFile('${orderId}', ${fileIndex})">🖨️ Print Document</button>` : ''}
+            ${viewUrl ? `<button class="btn btn-outline" onclick="window.openFullScreenFile('${orderId}', ${fileIndex})">🔗 Open in New Tab ↗</button>` : ''}
             <button class="btn btn-secondary" onclick="if(window.ModalComponent) window.ModalComponent.close(); else document.getElementById('active-modal-overlay')?.remove();">Close</button>
           `,
-          width: '850px'
+          width: '900px'
         });
-      } else {
-        NotificationService.showToast(`Preview: ${file.name}`, 'info');
       }
     };
+
 
     window.openFullScreenFile = async (orderId, fileIndex) => {
       const order = await DBService.getOrderById(orderId);
@@ -670,11 +735,16 @@ export const AdminViews = {
       const possibleDataUrl = pay.screenshotDataUrl || pay.fallbackData || (possibleUrl.startsWith('data:') ? possibleUrl : '');
       const possibleIdbKey = pay.screenshotIdbKey || (possibleUrl.startsWith('idb://') ? possibleUrl.replace('idb://', '') : '');
 
-      const screenshotUrl = await StorageService.getFileUrl({ 
-        url: possibleUrl, 
-        dataUrl: possibleDataUrl, 
-        idbKey: possibleIdbKey 
-      });
+      const hasRealScreenshot = (possibleUrl.startsWith('http://') || possibleUrl.startsWith('https://') || possibleUrl.startsWith('data:image') || possibleDataUrl.startsWith('data:image'));
+      
+      let screenshotUrl = '';
+      if (hasRealScreenshot) {
+        screenshotUrl = await StorageService.getFileUrl({ 
+          url: possibleUrl, 
+          dataUrl: possibleDataUrl, 
+          idbKey: possibleIdbKey 
+        });
+      }
 
       let bodyHTML = '';
 

@@ -144,7 +144,7 @@ export const StorageService = {
     return null;
   },
 
-  // Get usable browser URL (blob URL, HTTPS URL, or Data URL)
+  // Get usable browser URL (blob URL, HTTPS URL, Data URL, or live Firebase Storage lookup)
   async getFileUrl(fileObj) {
     if (!fileObj) return '';
     let target = fileObj;
@@ -155,18 +155,56 @@ export const StorageService = {
     const url = target.url || target.screenshotUrl || '';
     const dataUrl = target.dataUrl || target.screenshotDataUrl || target.fallbackData || '';
     const idbKey = target.idbKey || target.screenshotIdbKey || (url.startsWith('idb://') ? url.replace('idb://', '') : '');
+    const storagePath = target.storagePath || '';
 
-    // 1. Direct Web HTTPS, HTTP, Blob, or Data URLs (Works cross-device)
-    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+    // 1. Direct Web HTTPS, HTTP, Blob, or valid Base64 Data URLs (Works cross-device)
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
       return url;
     }
+    if (url.startsWith('data:') && url.length > 500) {
+      return url;
+    }
+    if (dataUrl && (dataUrl.startsWith('http://') || dataUrl.startsWith('https://') || (dataUrl.startsWith('data:') && dataUrl.length > 500))) {
+      return dataUrl;
+    }
 
-    // 2. Check in-memory blob cache
+    // 2. Fetch live from Firebase Storage if storagePath is recorded or perform dynamic candidate path lookup
+    const { storage, isDemo } = getServices();
+    if (!isDemo && storage) {
+      try {
+        if (!firebaseStorageModule) {
+          firebaseStorageModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js');
+        }
+        const { ref, getDownloadURL } = firebaseStorageModule;
+        
+        // A. Primary recorded storagePath
+        if (storagePath) {
+          try {
+            const cloudUrl = await getDownloadURL(ref(storage, storagePath));
+            if (cloudUrl) return cloudUrl;
+          } catch (e) {}
+        }
+        
+        // B. Dynamic candidate path lookup based on filename
+        if (target.name) {
+          try {
+            const cleanName = target.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const candidatePath = `customer_docs/${cleanName}`;
+            const cloudUrl = await getDownloadURL(ref(storage, candidatePath));
+            if (cloudUrl) return cloudUrl;
+          } catch (e) {}
+        }
+      } catch (e) {
+        console.warn("Cloud URL resolution warning:", e);
+      }
+    }
+
+    // 3. Check in-memory blob cache
     if (idbKey && blobUrlCache.has(idbKey)) {
       return blobUrlCache.get(idbKey);
     }
 
-    // 3. Try local IndexedDB (Same device)
+    // 4. Try local IndexedDB (Same device)
     if (idbKey) {
       const blob = await this.getFromIDB(idbKey);
       if (blob) {
@@ -176,12 +214,7 @@ export const StorageService = {
       }
     }
 
-    // 4. Fallback to Data URL if stored in file object (Cross-device fallback)
-    if (dataUrl && dataUrl.startsWith('data:')) {
-      return dataUrl;
-    }
-
-    return url.startsWith('idb://') ? '' : url;
+    return '';
   },
 
   // Read file as Data URL (Base64 string)
@@ -194,79 +227,148 @@ export const StorageService = {
     });
   },
 
-  // Universal Cross-Device Upload Function: Firebase Cloud Storage + Base64 Data URL fallback + IndexedDB
-  async uploadFile(file, pathFolder = 'uploads') {
+  // File Validation: Type (PDF, DOC, DOCX, JPG, PNG, WEBP) & Size (Max 200MB)
+  validateFile(file) {
+    if (!file) return { valid: false, error: 'No file selected.' };
+    const maxSize = 200 * 1024 * 1024; // 200MB
+    if (file.size > maxSize) {
+      return { valid: false, error: `File "${file.name}" exceeds maximum allowed size of 200MB (${this.formatBytes(file.size)}).` };
+    }
+
+    const allowedExts = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const fileName = file.name ? file.name.toLowerCase() : '';
+    const hasValidExt = allowedExts.some(ext => fileName.endsWith(ext));
+
+    const allowedMIMEs = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
+    const hasValidMIME = !file.type || allowedMIMEs.includes(file.type.toLowerCase()) || file.type.startsWith('image/');
+
+    if (!hasValidExt && !hasValidMIME) {
+      return { valid: false, error: `File "${file.name}" has an unsupported format. Allowed formats: PDF, DOC, DOCX, JPG, PNG, WEBP.` };
+    }
+
+    return { valid: true };
+  },
+
+  // Resumable Firebase Cloud Storage Upload with Live Progress Callback
+  async uploadFileResumable(file, orderId = 'temp', onProgress = null) {
+    const val = this.validateFile(file);
+    if (!val.valid) {
+      throw new Error(val.error);
+    }
+
     const idbKey = 'idb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
     const uploadedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(); // 7 days
 
-    // Save to IndexedDB immediately (< 10ms for local device fast access)
-    const savedLocally = await this.saveToIDB(idbKey, file);
-    if (savedLocally) {
-      const objectUrl = URL.createObjectURL(file);
-      blobUrlCache.set(idbKey, objectUrl);
-    }
+    // Store in local IndexedDB for immediate fallback
+    await this.saveToIDB(idbKey, file);
 
+    const { storage, isDemo } = getServices();
     let downloadUrl = '';
+    let storagePath = '';
     let dataUrl = '';
-    let storagePath = ''; // Firebase Storage path (needed for deletion)
 
-    // Convert file to Base64 Data URL for universal fallback sync (files <= 10MB)
+    // Convert small/medium files (<= 10MB) to Data URL for instant local fallback
     if (file.size <= 10 * 1024 * 1024) {
       try {
         dataUrl = await this.readFileAsDataURL(file);
-      } catch (e) {
-        console.warn('Data URL conversion warning:', e);
-      }
+      } catch (e) {}
     }
 
-    // Try Firebase Storage upload for universal cloud URL
-    const { storage, isDemo } = getServices();
     if (!isDemo && storage) {
       try {
         if (!firebaseStorageModule) {
           firebaseStorageModule = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js');
         }
-        const { ref, uploadBytes, getDownloadURL } = firebaseStorageModule;
+        const { ref, uploadBytesResumable, getDownloadURL } = firebaseStorageModule;
         const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        storagePath = `${pathFolder}/${Date.now()}_${cleanFileName}`;
+        storagePath = `orders/${orderId}/original/${Date.now()}_${cleanFileName}`;
         const fileRef = ref(storage, storagePath);
 
-        // Upload with 20 second timeout
-        const uploadPromise = uploadBytes(fileRef, file).then(() => getDownloadURL(fileRef));
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Cloud upload timeout')), 20000));
+        const metadata = {
+          contentType: file.type || 'application/pdf',
+          customMetadata: {
+            originalName: file.name,
+            orderId: orderId,
+            uploadedAt: uploadedAt
+          }
+        };
 
-        const cloudUrl = await Promise.race([uploadPromise, timeoutPromise]);
-        if (cloudUrl) {
-          downloadUrl = cloudUrl;
-          console.log('✅ File uploaded to Firebase Storage:', storagePath);
-        }
+        const uploadTask = uploadBytesResumable(fileRef, file, metadata);
+
+        // Wrap uploadTask in a Promise to track live progress
+        downloadUrl = await new Promise((resolve, reject) => {
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              if (typeof onProgress === 'function') {
+                onProgress(progress, snapshot.state);
+              }
+            },
+            (error) => {
+              console.error('Firebase Storage resumable upload error:', error);
+              reject(error);
+            },
+            async () => {
+              try {
+                const url = await getDownloadURL(uploadTask.snapshot.ref);
+                resolve(url);
+              } catch (err) {
+                reject(err);
+              }
+            }
+          );
+        });
+
+        console.log('✅ Original file successfully stored in Firebase Storage:', storagePath);
       } catch (err) {
-        console.warn('Firebase Storage upload warning, falling back to Data URL:', err);
-        storagePath = ''; // clear path if upload failed
+        console.warn('Firebase Storage upload failed:', err);
+        storagePath = '';
+        downloadUrl = '';
+        throw new Error(`Cloud upload failed for "${file.name}". Please check internet connection and retry.`);
       }
-    }
-
-    // Final downloadUrl resolution: Cloud HTTPS URL -> Data URL -> idb:// key
-    if (!downloadUrl) {
-      if (dataUrl) {
-        downloadUrl = dataUrl;
-      } else {
-        downloadUrl = 'idb://' + idbKey;
-      }
+    } else {
+      // Demo / Fallback mode
+      downloadUrl = dataUrl || ('idb://' + idbKey);
+      if (typeof onProgress === 'function') onProgress(100, 'SUCCESS');
     }
 
     return {
+      uploadStatus: 'uploaded',
+      downloadURL: downloadUrl,
       url: downloadUrl,
       dataUrl: dataUrl,
       idbKey: idbKey,
-      storagePath: storagePath,  // Firebase Storage path for future deletion
-      uploadedAt: uploadedAt,
-      expiresAt: expiresAt,      // Auto-delete after 7 days
+      storagePath: storagePath,
+      fileName: file.name,
       name: file.name,
+      fileType: file.type || 'application/pdf',
+      type: file.type || 'application/pdf',
+      fileSize: this.formatBytes(file.size),
       size: this.formatBytes(file.size),
-      type: file.type || 'application/pdf'
+      rawSize: file.size,
+      uploadedAt: uploadedAt,
+      expiresAt: expiresAt
     };
+  },
+
+  // Universal upload wrapper (maintains backward compatibility)
+  async uploadFile(file, pathFolder = 'uploads', onProgress = null) {
+    const val = this.validateFile(file);
+    if (!val.valid) {
+      throw new Error(val.error);
+    }
+    return this.uploadFileResumable(file, pathFolder.replace(/[^a-zA-Z0-9_-]/g, '_'), onProgress);
   },
 
   // Delete a file from Firebase Storage by its storagePath
@@ -283,13 +385,12 @@ export const StorageService = {
       console.log('🗑️ Firebase Storage file deleted:', storagePath);
       return true;
     } catch (err) {
-      // File may already be deleted or path not found — not an error
       console.warn('Storage delete warning (may already be deleted):', storagePath, err.code);
       return false;
     }
   },
 
-  // Auto-cleanup: delete expired Firebase Storage files (called on admin order load)
+  // Auto-cleanup: delete expired Firebase Storage files while preserving the Firestore order document
   async cleanupExpiredFiles(orders, updateOrderCallback) {
     if (!orders || orders.length === 0) return;
     const now = Date.now();
@@ -297,20 +398,25 @@ export const StorageService = {
       if (!order.files) continue;
       let changed = false;
       for (const f of order.files) {
-        if (f.expired) continue; // already marked expired
-        if (!f.expiresAt) continue; // no expiry set (old order)
+        if (f.uploadStatus === 'expired' || f.expired) continue; // already marked expired
+        if (!f.expiresAt) continue; // no expiry set
         if (new Date(f.expiresAt).getTime() > now) continue; // not yet expired
-        // Expired — delete from Firebase Storage
+
+        // File is expired — delete actual file from Firebase Storage
         if (f.storagePath) {
           await this.deleteFileByPath(f.storagePath);
         }
-        // Mark file as expired in the record
+
+        // Keep order document intact in Firestore, update file status to 'expired'
+        f.uploadStatus = 'expired';
         f.expired = true;
+        f.downloadURL = null;
         f.url = '';
         f.dataUrl = '';
-        f.storagePath = '';
+        f.storagePath = null;
         changed = true;
       }
+
       if (changed && typeof updateOrderCallback === 'function') {
         await updateOrderCallback(order);
       }

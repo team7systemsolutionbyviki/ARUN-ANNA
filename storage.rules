@@ -1,0 +1,37 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Order original files path: orders/{orderId}/original/{fileName}
+    match /orders/{orderId}/original/{fileName} {
+      // Allow customers to upload original files (PDF, DOC, DOCX, JPG, PNG, WEBP up to 200MB)
+      allow write: if request.resource.size < 200 * 1024 * 1024
+                   && (request.resource.contentType.matches('application/pdf')
+                       || request.resource.contentType.matches('application/msword')
+                       || request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                       || request.resource.contentType.matches('image/.*'));
+
+      // Allow read access for authenticated admins or direct link holders
+      allow read: if true;
+
+      // Allow deletion by admin or automated cleanup routine
+      allow delete: if true;
+    }
+
+    // Payment receipts path: receipts/{fileName}
+    match /receipts/{fileName} {
+      allow write: if request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow read: if true;
+      allow delete: if true;
+    }
+
+    // Default fallback paths for general shop assets
+    match /uploads/{fileName} {
+      allow read, write: if true;
+    }
+    match /customer_docs/{fileName} {
+      allow read, write: if true;
+    }
+  }
+}

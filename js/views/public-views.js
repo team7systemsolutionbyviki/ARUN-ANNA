@@ -850,37 +850,63 @@ export const PublicViews = {
       let newlyUploadedCount = 0;
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i];
-        const progressBase = Math.round(((i) / validFiles.length) * 100);
-        updateProgress(Math.max(25, progressBase), file.name);
+
+        // 1. Validate file format and 200MB size limit
+        const val = StorageService.validateFile(file);
+        if (!val.valid) {
+          NotificationService.showToast(val.error, 'error');
+          continue;
+        }
+
+        updateProgress(5, file.name);
 
         try {
-          // Brief pause for visual progress animation
-          await new Promise(r => setTimeout(r, 200));
           const estPages = await StorageService.estimatePdfPages(file);
 
-          updateProgress(Math.min(90, progressBase + 60), file.name);
-          const uploaded = await StorageService.uploadFile(file, 'customer_docs');
+          // 2. Perform Resumable Upload to Firebase Storage with live progress callback
+          const uploaded = await StorageService.uploadFileResumable(file, 'orders', (pct) => {
+            updateProgress(pct, file.name);
+          });
 
           state.files.push({
+            fileName: file.name,
             name: file.name,
-            size: uploaded.size || 'N/A',
-            url: uploaded.url || '',
+            fileType: file.type || 'application/pdf',
+            type: file.type || 'application/pdf',
+            fileSize: uploaded.fileSize || StorageService.formatBytes(file.size),
+            size: uploaded.fileSize || StorageService.formatBytes(file.size),
+            storagePath: uploaded.storagePath || '',
+            downloadURL: uploaded.downloadURL || uploaded.url || '',
+            url: uploaded.downloadURL || uploaded.url || '',
             dataUrl: uploaded.dataUrl || '',
             idbKey: uploaded.idbKey || '',
+            uploadStatus: 'uploaded',
+            uploadedAt: uploaded.uploadedAt || new Date().toISOString(),
+            expiresAt: uploaded.expiresAt || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
             pages: estPages || 1,
             options: defaultFileOptions(estPages || 1)
           });
           newlyUploadedCount++;
         } catch (err) {
-          console.error('File processing error:', err);
-          NotificationService.showToast(`Failed to process ${file.name}`, 'error');
+          console.error('File upload error:', err);
+          NotificationService.showToast(`Upload failed for ${file.name}. Please check network and retry.`, 'error');
+          statusBox.innerHTML = `
+            <div style="background:rgba(239,68,68,0.1); border:2px solid #ef4444; border-radius:14px; padding:1.25rem; text-align:center;">
+              <h4 style="color:#dc2626; font-weight:800;">❌ Upload Failed</h4>
+              <p style="font-size:0.875rem; color:var(--text-main); margin-top:0.35rem;">
+                Could not upload <b>${file.name}</b> to online storage. Please check your internet connection.
+              </p>
+              <button class="btn btn-danger mt-2" onclick="document.getElementById('file-upload-input').click()">🔄 Select File & Retry Upload</button>
+            </div>
+          `;
+          return;
         }
       }
 
-      updateProgress(100, 'Finalizing upload...');
-      await new Promise(r => setTimeout(r, 250));
+      updateProgress(100, 'Upload Complete!');
+      await new Promise(r => setTimeout(r, 200));
 
-      // Step 2: Render PDF Upload Successful Screen
+      // Render PDF Upload Successful Screen
       const lastUploadedFile = state.files[state.files.length - 1];
       statusBox.innerHTML = `
         <div style="background:linear-gradient(135deg, rgba(16,185,129,0.14) 0%, rgba(5,150,105,0.08) 100%); border:2px solid #10b981; border-radius:14px; padding:1.25rem 1.5rem; box-shadow:0 6px 20px rgba(16,185,129,0.18); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;" class="animate-fade-in">
@@ -890,11 +916,11 @@ export const PublicViews = {
             </div>
             <div>
               <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                <h4 style="font-size:1.15rem; font-weight:800; color:#10b981; margin:0;">PDF Upload Successful!</h4>
-                <span style="background:#10b981; color:white; font-size:0.75rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:12px;">Verified & Ready ✓</span>
+                <h4 style="font-size:1.15rem; font-weight:800; color:#10b981; margin:0;">File Uploaded Successfully!</h4>
+                <span style="background:#10b981; color:white; font-size:0.75rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:12px;">Stored Online Safely ✓</span>
               </div>
               <p style="font-size:0.875rem; color:var(--text-main); margin-top:0.25rem;">
-                <b>${newlyUploadedCount} PDF file(s)</b> uploaded & verified (~${lastUploadedFile ? lastUploadedFile.pages : 1} total pages).
+                <b>${newlyUploadedCount} file(s)</b> uploaded to cloud storage (~${lastUploadedFile ? lastUploadedFile.pages : 1} pages).
               </p>
             </div>
           </div>
@@ -904,7 +930,7 @@ export const PublicViews = {
         </div>
       `;
 
-      NotificationService.showToast(`PDF Uploaded Successfully!`, 'success');
+      NotificationService.showToast(`File Uploaded Successfully to Cloud Storage!`, 'success');
 
       state.totalPages = state.files.reduce((acc, f) => acc + f.pages, 0) || 1;
       renderFileList();

@@ -87,6 +87,68 @@ export const DBService = {
   },
 
   // Fetch all orders
+  // Smart Order Merger — combines records from Firestore, RTDB, and LocalStorage to preserve the full original customer PDF files and screenshots
+  mergeOrderObjects(existingOrder, incomingOrder) {
+    if (!existingOrder) return incomingOrder;
+    if (!incomingOrder) return existingOrder;
+
+    const merged = { ...existingOrder, ...incomingOrder };
+
+    // Smart merge of PDF files array
+    if (existingOrder.files || incomingOrder.files) {
+      const list1 = existingOrder.files || [];
+      const list2 = incomingOrder.files || [];
+      const maxLen = Math.max(list1.length, list2.length);
+      const mergedFiles = [];
+
+      for (let i = 0; i < maxLen; i++) {
+        const f1 = list1[i] || {};
+        const f2 = list2[i] || {};
+        const url1 = f1.url || f1.dataUrl || '';
+        const url2 = f2.url || f2.dataUrl || '';
+
+        // Pick whichever URL is a real HTTPS cloud URL or longer Base64 string
+        let bestUrl = url1;
+        if (url2.startsWith('http://') || url2.startsWith('https://')) {
+          bestUrl = url2;
+        } else if (url1.startsWith('http://') || url1.startsWith('https://')) {
+          bestUrl = url1;
+        } else if (url2.length > url1.length) {
+          bestUrl = url2;
+        }
+
+        const bestDataUrl = (f2.dataUrl && f2.dataUrl.length > 500) ? f2.dataUrl : (f1.dataUrl || (bestUrl.startsWith('data:') ? bestUrl : ''));
+        const bestStoragePath = f2.storagePath || f1.storagePath || '';
+
+        mergedFiles.push({
+          ...f1,
+          ...f2,
+          url: bestUrl,
+          dataUrl: bestDataUrl,
+          storagePath: bestStoragePath
+        });
+      }
+      merged.files = mergedFiles;
+    }
+
+    // Smart merge of payment receipt screenshot
+    if (existingOrder.payment || incomingOrder.payment) {
+      const p1 = existingOrder.payment || {};
+      const p2 = incomingOrder.payment || {};
+      const s1 = p1.screenshotUrl || p1.screenshotDataUrl || '';
+      const s2 = p2.screenshotUrl || p2.screenshotDataUrl || '';
+      const bestScreen = s2.length > s1.length ? s2 : (s1 || s2);
+      merged.payment = {
+        ...p1,
+        ...p2,
+        screenshotUrl: bestScreen,
+        screenshotDataUrl: p2.screenshotDataUrl || p1.screenshotDataUrl || (bestScreen.startsWith('data:') ? bestScreen : '')
+      };
+    }
+
+    return merged;
+  },
+
   // Fetch all orders (Unified Local Storage + Firestore + Realtime Database merge)
   async getOrders() {
     this.initLocalStore();
@@ -104,7 +166,10 @@ export const DBService = {
           const { collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
           const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
           const snap = await getDocs(q);
-          snap.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+          snap.docs.forEach(d => {
+            const orderData = { id: d.id, ...d.data() };
+            map.set(d.id, this.mergeOrderObjects(map.get(d.id), orderData));
+          });
         } catch (err) {
           console.warn('Firestore fetch warning:', err);
         }
@@ -118,9 +183,8 @@ export const DBService = {
         if (snap.exists()) {
           const rtdbData = snap.val();
           Object.entries(rtdbData).forEach(([id, order]) => {
-            if (!map.has(id) || new Date(order.updatedAt || order.createdAt) > new Date(map.get(id)?.updatedAt || map.get(id)?.createdAt || 0)) {
-              map.set(id, { id, ...order });
-            }
+            const orderData = { id, ...order };
+            map.set(id, this.mergeOrderObjects(map.get(id), orderData));
           });
         }
       } catch (err) {
@@ -195,7 +259,7 @@ export const DBService = {
   },
 
   // Prepare order payload for Cloud (Firestore / Realtime Database)
-  // Preserves HTTPS Firebase Storage URLs and Base64 Data URLs so Admin PC gets full PDF preview + download!
+  // Preserves HTTPS Firebase Storage URLs and complete Base64 Data URLs so Admin PC gets full original PDF preview + download!
   sanitizeForCloud(order, isFirestore = false) {
     if (!order) return order;
     try {
@@ -208,12 +272,12 @@ export const DBService = {
             f.url = mainUrl;
             if (f.dataUrl) delete f.dataUrl;
           } 
-          // 2. Base64 Data URL (PDF file binary data)
+          // 2. Base64 Data URL (PDF file binary data) — NEVER truncate Base64 string!
           else if (mainUrl.startsWith('data:')) {
-            // For Firestore (1MB limit), keep dataUrl if under 700KB (~750,000 chars)
-            if (isFirestore && mainUrl.length > 750000) {
-              f.url = f.storagePath ? '' : mainUrl.substring(0, 500);
-              delete f.dataUrl;
+            // For Firestore (1MB limit), keep full dataUrl if under 800KB (~800,000 chars)
+            if (isFirestore && mainUrl.length > 800000) {
+              f.url = f.storagePath ? '' : mainUrl; // Preserve full dataUrl if no storagePath
+              if (f.storagePath && f.dataUrl) delete f.dataUrl;
             } else {
               f.url = mainUrl;
               f.dataUrl = mainUrl;
@@ -258,13 +322,33 @@ export const DBService = {
   async createOrder(orderData) {
     this.initLocalStore();
     const newId = 'ORD-' + new Date().getFullYear() + '-' + Math.floor(1000 + Math.random() * 9000);
+    const firstFile = (orderData.files && orderData.files[0]) ? orderData.files[0] : {};
+    const createdAt = new Date().toISOString();
+
     const newOrder = {
       id: newId,
-      ...orderData,
+      orderId: newId,
+      customerName: orderData.customerName || 'Customer',
+      customerPhone: orderData.customerPhone || '',
+      customerEmail: orderData.customerEmail || '',
+      customerAddress: orderData.customerAddress || '',
+      fileName: firstFile.fileName || firstFile.name || 'document.pdf',
+      fileType: firstFile.fileType || firstFile.type || 'application/pdf',
+      fileSize: firstFile.fileSize || firstFile.size || 'N/A',
+      storagePath: firstFile.storagePath || null,
+      downloadURL: firstFile.downloadURL || firstFile.url || null,
+      uploadedAt: firstFile.uploadedAt || createdAt,
+      uploadStatus: firstFile.uploadStatus || 'uploaded',
+      expiresAt: firstFile.expiresAt || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      printSettings: orderData.options || {},
+      totalAmount: orderData.pricing?.total || 0,
+      paymentStatus: 'Waiting Verification',
+      orderStatus: 'Waiting Verification',
       status: 'Waiting Verification',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      estimatedReady: new Date(Date.now() + 4 * 3600 * 1000).toISOString()
+      createdAt: createdAt,
+      updatedAt: createdAt,
+      estimatedReady: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
+      ...orderData
     };
 
     // Save Local safely
