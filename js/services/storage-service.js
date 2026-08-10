@@ -258,6 +258,78 @@ export const StorageService = {
     return { valid: true };
   },
 
+  // Server-Side HTTPS API Upload Client (XMLHttpRequest multipart/form-data upload)
+  // Completely bypasses browser-to-Firebase Storage CORS checks!
+  async uploadFileApi(file, orderId = 'temp', onProgress = null) {
+    const val = this.validateFile(file);
+    if (!val.valid) {
+      throw new Error(val.error);
+    }
+
+    // Configured Server-Side HTTPS Cloud Functions API Endpoint
+    const API_URL = window.SERVER_UPLOAD_API_URL || 'https://us-central1-printing-app-9a63f.cloudfunctions.net/api/upload-document';
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('orderId', orderId);
+
+      const startTime = Date.now();
+
+      // Real XMLHttpRequest Upload Progress Listener
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          const elapsed = (Date.now() - startTime) / 1000;
+          const speed = elapsed > 0.2 ? (event.loaded / elapsed) : 0;
+          const remainingBytes = Math.max(0, event.total - event.loaded);
+          const remainingSecs = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
+
+          if (typeof onProgress === 'function') {
+            onProgress({
+              progress: progress,
+              bytesTransferred: event.loaded,
+              totalBytes: event.total,
+              speed: speed,
+              remainingSecs: remainingSecs
+            });
+          }
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.success) {
+              resolve(res);
+            } else {
+              reject(new Error(res.error || 'Server upload failed.'));
+            }
+          } catch (e) {
+            reject(new Error('Invalid JSON response from upload server.'));
+          }
+        } else {
+          try {
+            const errRes = JSON.parse(xhr.responseText);
+            reject(new Error(errRes.error || `HTTP ${xhr.status} Server Error`));
+          } catch (e) {
+            reject(new Error(`Server Upload Error (HTTP ${xhr.status})`));
+          }
+        }
+      });
+
+      xhr.addEventListener('error', () => {
+        // Fallback to client-side upload gracefully if Cloud Function endpoint is offline
+        this.uploadFileResumable(file, orderId, onProgress).then(resolve).catch(reject);
+      });
+
+      xhr.open('POST', API_URL, true);
+      xhr.send(formData);
+    });
+  },
+
   // Resumable Firebase Cloud Storage Upload with Live Progress Callback (Zero-Memory Main-Thread Streaming)
   async uploadFileResumable(file, orderId = 'temp', onProgress = null) {
     const val = this.validateFile(file);

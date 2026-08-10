@@ -926,8 +926,8 @@ export const PublicViews = {
         }
 
         try {
-          // 2. START FIREBASE UPLOAD IMMEDIATELY (0ms delay)
-          const uploadPromise = StorageService.uploadFileResumable(file, 'orders', (metrics) => {
+          // 2. START SERVER-SIDE HTTPS API MULTIPART UPLOAD (Bypasses Browser CORS completely)
+          const uploadPromise = StorageService.uploadFileApi(file, 'orders', (metrics) => {
             updateUploadMetrics(metrics, file.name, file.size);
           });
 
