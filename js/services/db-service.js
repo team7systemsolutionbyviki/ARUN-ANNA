@@ -194,28 +194,40 @@ export const DBService = {
     }
   },
 
-  // Strip base64 dataUrls for cloud (Firestore has 1MB doc limit) — keeps HTTPS URLs intact
-  sanitizeForCloud(order) {
+  // Prepare order payload for Cloud (Firestore / Realtime Database)
+  // Preserves HTTPS Firebase Storage URLs and Base64 Data URLs so Admin PC gets full PDF preview + download!
+  sanitizeForCloud(order, isFirestore = false) {
     if (!order) return order;
     try {
       const cloud = JSON.parse(JSON.stringify(order));
       if (cloud.files && Array.isArray(cloud.files)) {
         cloud.files.forEach(f => {
-          // Keep Firebase Storage HTTPS URL + expiry metadata; remove raw base64
-          if (f.dataUrl) delete f.dataUrl;
-          if (f.url && f.url.startsWith('data:')) {
-            f.url = f.idbKey ? ('idb://' + f.idbKey) : '[local-only]';
+          const mainUrl = f.url || f.dataUrl || '';
+          // 1. Direct Web HTTPS/HTTP/Blob URL (Cloud Storage URL)
+          if (mainUrl.startsWith('http://') || mainUrl.startsWith('https://')) {
+            f.url = mainUrl;
+            if (f.dataUrl) delete f.dataUrl;
+          } 
+          // 2. Base64 Data URL (PDF file binary data)
+          else if (mainUrl.startsWith('data:')) {
+            // For Firestore (1MB limit), keep dataUrl if under 700KB (~750,000 chars)
+            if (isFirestore && mainUrl.length > 750000) {
+              f.url = f.storagePath ? '' : mainUrl.substring(0, 500);
+              delete f.dataUrl;
+            } else {
+              f.url = mainUrl;
+              f.dataUrl = mainUrl;
+            }
           }
-          // Always preserve: storagePath, uploadedAt, expiresAt, expired flag
-          // (these are needed for server-side/client-side auto-deletion)
         });
       }
+
+      // Always preserve payment screenshot in full for cross-device verification
       if (cloud.payment) {
-        if (cloud.payment.screenshotDataUrl) delete cloud.payment.screenshotDataUrl;
-        if (cloud.payment.screenshotUrl && cloud.payment.screenshotUrl.startsWith('data:')) {
-          cloud.payment.screenshotUrl = cloud.payment.screenshotIdbKey
-            ? ('idb://' + cloud.payment.screenshotIdbKey)
-            : '[local-only]';
+        const screen = cloud.payment.screenshotUrl || cloud.payment.screenshotDataUrl || '';
+        if (screen) {
+          cloud.payment.screenshotUrl = screen;
+          cloud.payment.screenshotDataUrl = screen;
         }
       }
       return cloud;
@@ -229,17 +241,16 @@ export const DBService = {
     if (!order || !order.id) return;
     const { db, firebaseApp, isDemo } = getServices();
     if (isDemo || !firebaseApp) return;
-    const cloudOrder = this.sanitizeForCloud(order);
     if (db) {
       try {
         const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
-        await setDoc(doc(db, 'orders', order.id), cloudOrder);
+        await setDoc(doc(db, 'orders', order.id), this.sanitizeForCloud(order, true));
       } catch (e) {}
     }
     try {
       const { getDatabase, ref, set } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js');
       const rtdb = getDatabase(firebaseApp);
-      await set(ref(rtdb, 'orders/' + order.id), cloudOrder);
+      await set(ref(rtdb, 'orders/' + order.id), this.sanitizeForCloud(order, false));
     } catch (e) {}
   },
 
@@ -269,24 +280,22 @@ export const DBService = {
     // Save Cloud: Firestore + Realtime Database
     const { db, firebaseApp, isDemo } = getServices();
     if (!isDemo && firebaseApp) {
-      const cloudOrder = this.sanitizeForCloud(newOrder); // Strip base64 to stay under Firestore 1MB limit
-
-      // 1. Firestore insert
+      // 1. Firestore insert (sanitized for 1MB doc limit)
       if (db) {
         try {
           const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-          await setDoc(doc(db, "orders", newId), cloudOrder);
+          await setDoc(doc(db, "orders", newId), this.sanitizeForCloud(newOrder, true));
           console.log("✅ Order synced to Firestore:", newId);
         } catch (err) {
           console.warn("Firestore order insert warning:", err);
         }
       }
 
-      // 2. Realtime Database insert (Guaranteed fallback for instant cross-device reception)
+      // 2. Realtime Database insert (Guaranteed fallback up to 10MB node limit for cross-device reception)
       try {
         const { getDatabase, ref, set } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
         const rtdb = getDatabase(firebaseApp);
-        await set(ref(rtdb, 'orders/' + newId), cloudOrder);
+        await set(ref(rtdb, 'orders/' + newId), this.sanitizeForCloud(newOrder, false));
         console.log("✅ Order synced to Realtime Database:", newId);
       } catch (err) {
         console.warn("RTDB order insert warning:", err);

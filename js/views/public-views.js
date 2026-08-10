@@ -1317,6 +1317,9 @@ export const PublicViews = {
               url: f.url,
               dataUrl: f.dataUrl || '',
               idbKey: f.idbKey || '',
+              storagePath: f.storagePath || '',
+              uploadedAt: f.uploadedAt || '',
+              expiresAt: f.expiresAt || '',
               pages: f.pages,
               options: f.options
             })),
