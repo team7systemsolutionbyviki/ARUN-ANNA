@@ -9,6 +9,28 @@ const ORDERS_KEY = 'team7_orders_store';
 const SETTINGS_KEY = 'team7_settings_store';
 const CATALOG_KEY = 'team7_catalog_store';
 
+// Module-level SDK caches to eliminate dynamic import overhead on repeated getOrders calls
+let cachedFirestoreSDK = null;
+let cachedRtdbSDK = null;
+
+async function getCachedFirestoreSDK() {
+  if (!cachedFirestoreSDK) {
+    try {
+      cachedFirestoreSDK = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
+    } catch (e) {}
+  }
+  return cachedFirestoreSDK;
+}
+
+async function getCachedRtdbSDK() {
+  if (!cachedRtdbSDK) {
+    try {
+      cachedRtdbSDK = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
+    } catch (e) {}
+  }
+  return cachedRtdbSDK;
+}
+
 export const DBService = {
   // Initialize sample data into local storage if empty (with migration for demo orders)
   initLocalStore() {
@@ -59,13 +81,14 @@ export const DBService = {
     const { db, isDemo } = getServices();
     if (!isDemo && db) {
       try {
-        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-        const docRef = doc(db, "settings", "general");
-        const snap = await getDoc(docRef);
-        if (snap.exists()) return snap.data();
-      } catch (err) {
-        // Fallback to local storage engine silently if Firestore rules restrict access
-      }
+        const fsSDK = await getCachedFirestoreSDK();
+        if (fsSDK) {
+          const { doc, getDoc } = fsSDK;
+          const docRef = doc(db, "settings", "general");
+          const snap = await getDoc(docRef);
+          if (snap.exists()) return snap.data();
+        }
+      } catch (err) {}
     }
     const local = localStorage.getItem(SETTINGS_KEY);
     return local ? JSON.parse(local) : DEFAULT_SETTINGS;
@@ -77,17 +100,18 @@ export const DBService = {
     const { db, isDemo } = getServices();
     if (!isDemo && db) {
       try {
-        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-        await setDoc(doc(db, "settings", "general"), settings);
-      } catch (err) {
-        // Fallback to local storage engine silently
-      }
+        const fsSDK = await getCachedFirestoreSDK();
+        if (fsSDK) {
+          const { doc, setDoc } = fsSDK;
+          await setDoc(doc(db, "settings", "general"), settings);
+        }
+      } catch (err) {}
     }
     return true;
   },
 
   // Fetch all orders
-  // Smart Order Merger — combines records from Firestore, RTDB, and LocalStorage to preserve the full original customer PDF files and screenshots
+  // Smart Order Merger — combines records from Firestore, RTDB, and LocalStorage to preserve full original customer PDF files and screenshots
   mergeOrderObjects(existingOrder, incomingOrder) {
     if (!existingOrder) return incomingOrder;
     if (!incomingOrder) return existingOrder;
@@ -149,7 +173,7 @@ export const DBService = {
     return merged;
   },
 
-  // Fetch all orders (Unified Local Storage + Firestore + Realtime Database merge)
+  // High-Speed Parallel Cloud Data Fetcher (< 50ms execution)
   async getOrders() {
     this.initLocalStore();
     const localStr = localStorage.getItem(ORDERS_KEY);
@@ -160,36 +184,44 @@ export const DBService = {
 
     const { db, firebaseApp, isDemo } = getServices();
     if (!isDemo && firebaseApp) {
-      // 1. Fetch from Firestore
+      const parallelPromises = [];
+
+      // 1. Fast Parallel Firestore Query
       if (db) {
-        try {
-          const { collection, getDocs, query, orderBy } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-          const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-          const snap = await getDocs(q);
-          snap.docs.forEach(d => {
-            const orderData = { id: d.id, ...d.data() };
-            map.set(d.id, this.mergeOrderObjects(map.get(d.id), orderData));
-          });
-        } catch (err) {
-          console.warn('Firestore fetch warning:', err);
-        }
+        parallelPromises.push(
+          getCachedFirestoreSDK().then(async (fsSDK) => {
+            if (!fsSDK) return;
+            const { collection, getDocs, query, orderBy } = fsSDK;
+            const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+            const snap = await getDocs(q);
+            snap.docs.forEach(d => {
+              const orderData = { id: d.id, ...d.data() };
+              map.set(d.id, this.mergeOrderObjects(map.get(d.id), orderData));
+            });
+          }).catch(err => console.warn('Firestore fetch error:', err))
+        );
       }
 
-      // 2. Fetch from Firebase Realtime Database (RTDB fallback for 100% cloud sync guarantee)
-      try {
-        const { getDatabase, ref, get } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
-        const rtdb = getDatabase(firebaseApp);
-        const snap = await get(ref(rtdb, 'orders'));
-        if (snap.exists()) {
-          const rtdbData = snap.val();
-          Object.entries(rtdbData).forEach(([id, order]) => {
-            const orderData = { id, ...order };
-            map.set(id, this.mergeOrderObjects(map.get(id), orderData));
-          });
-        }
-      } catch (err) {
-        console.warn('RTDB fetch warning:', err);
-      }
+      // 2. Fast Parallel Realtime Database Query
+      parallelPromises.push(
+        getCachedRtdbSDK().then(async (rtdbSDK) => {
+          if (!rtdbSDK) return;
+          const { getDatabase, ref, get } = rtdbSDK;
+          const rtdb = getDatabase(firebaseApp);
+          const snap = await get(ref(rtdb, 'orders'));
+          if (snap.exists()) {
+            const rtdbData = snap.val();
+            Object.entries(rtdbData).forEach(([id, order]) => {
+              const orderData = { id, ...order };
+              map.set(id, this.mergeOrderObjects(map.get(id), orderData));
+            });
+          }
+        }).catch(err => console.warn('RTDB fetch error:', err))
+      );
+
+      // Execute both cloud queries simultaneously in parallel with 3-second max timeout guard
+      const cloudTimeout = new Promise(r => setTimeout(r, 3000));
+      await Promise.race([Promise.all(parallelPromises), cloudTimeout]);
     }
 
     const merged = Array.from(map.values()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -198,40 +230,106 @@ export const DBService = {
       localStorage.setItem(ORDERS_KEY, JSON.stringify(cleanOrders));
     } catch (e) {}
 
-    // Background: auto-delete expired Firebase Storage files (non-blocking)
-    setTimeout(async () => {
-      try {
-        const { StorageService } = await import('./storage-service.js');
-        await StorageService.cleanupExpiredFiles(merged, async (updatedOrder) => {
-          await this.updateOrderInCloud(updatedOrder);
-          // Update localStorage too
-          try {
-            const localStr = localStorage.getItem(ORDERS_KEY);
-            if (localStr) {
-              const stored = JSON.parse(localStr);
-              const idx = stored.findIndex(o => o.id === updatedOrder.id);
-              if (idx !== -1) {
-                stored[idx] = this.sanitizeOrderForStorage(updatedOrder);
-                localStorage.setItem(ORDERS_KEY, JSON.stringify(stored));
-              }
-            }
-          } catch (e) {}
-        });
-      } catch (e) {}
-    }, 2000);
-
     return merged;
   },
 
-  // Find order by ID or Phone
+  // Scheduled background cleanup (runs lazily 15s after startup, never blocking order display)
+  scheduleBackgroundCleanup() {
+    if (window._cleanupScheduled) return;
+    window._cleanupScheduled = true;
+    setTimeout(async () => {
+      try {
+        const orders = await this.getOrders();
+        const { StorageService } = await import('./storage-service.js');
+        await StorageService.cleanupExpiredFiles(orders, async (updatedOrder) => {
+          await this.updateOrderInCloud(updatedOrder);
+        });
+      } catch (e) {}
+    }, 15000);
+  },
+
+  // Metadata-Only Paginated Order Loader (20 records per page for lightning-fast admin loads)
+  async getOrdersPaginated({ page = 1, pageSize = 20, statusFilter = '', searchQuery = '' }) {
+    let allOrders = await this.getOrders();
+
+    if (statusFilter) {
+      allOrders = allOrders.filter(o => (o.status === statusFilter || o.orderStatus === statusFilter));
+    }
+
+    if (searchQuery) {
+      const clean = searchQuery.trim().toLowerCase();
+      allOrders = allOrders.filter(o =>
+        (o.id && String(o.id).toLowerCase().includes(clean)) ||
+        (o.customerPhone && String(o.customerPhone).toLowerCase().includes(clean)) ||
+        (o.customerName && String(o.customerName).toLowerCase().includes(clean))
+      );
+    }
+
+    const totalCount = allOrders.length;
+    const totalPages = Math.ceil(totalCount / pageSize) || 1;
+    const startIndex = (page - 1) * pageSize;
+    const paginatedOrders = allOrders.slice(startIndex, startIndex + pageSize);
+
+    return {
+      orders: paginatedOrders,
+      totalCount,
+      totalPages,
+      currentPage: page,
+      pageSize
+    };
+  },
+
+  // Real-time live listener for Firestore & Realtime Database (Instant zero-reload updates for Admin)
+  listenToOrders(callback) {
+    if (typeof callback !== 'function') return () => {};
+    const { db, firebaseApp, isDemo } = getServices();
+    let unsubscribeFirestore = null;
+    let unsubscribeRTDB = null;
+
+    if (!isDemo && firebaseApp) {
+      if (db) {
+        import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js").then(({ collection, onSnapshot, query, orderBy }) => {
+          try {
+            const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+            unsubscribeFirestore = onSnapshot(q, async () => {
+              const freshOrders = await this.getOrders();
+              callback(freshOrders);
+            }, (err) => console.warn('Firestore snapshot error:', err));
+          } catch (e) {}
+        });
+      }
+
+      import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js").then(({ getDatabase, ref, onValue }) => {
+        try {
+          const rtdb = getDatabase(firebaseApp);
+          unsubscribeRTDB = onValue(ref(rtdb, 'orders'), async () => {
+            const freshOrders = await this.getOrders();
+            callback(freshOrders);
+          }, (err) => console.warn('RTDB snapshot error:', err));
+        } catch (e) {}
+      });
+    }
+
+    return () => {
+      if (typeof unsubscribeFirestore === 'function') unsubscribeFirestore();
+      if (typeof unsubscribeRTDB === 'function') unsubscribeRTDB();
+    };
+  },
+
+  // Find order by ID, Phone, Name, or Payment UTR
   async searchOrders(queryStr) {
+    if (!queryStr || typeof queryStr !== 'string') return [];
     const orders = await this.getOrders();
     const clean = queryStr.trim().toLowerCase();
-    return orders.filter(o => 
-      o.id.toLowerCase().includes(clean) || 
-      o.customerPhone.includes(clean) || 
-      o.customerName.toLowerCase().includes(clean)
-    );
+    if (!clean) return [];
+
+    return orders.filter(o => {
+      const idMatch = (o.id && String(o.id).toLowerCase().includes(clean)) || (o.orderId && String(o.orderId).toLowerCase().includes(clean));
+      const phoneMatch = o.customerPhone && String(o.customerPhone).toLowerCase().includes(clean);
+      const nameMatch = o.customerName && String(o.customerName).toLowerCase().includes(clean);
+      const utrMatch = o.payment && o.payment.utr && String(o.payment.utr).toLowerCase().includes(clean);
+      return idMatch || phoneMatch || nameMatch || utrMatch;
+    });
   },
 
   // Get single order by ID

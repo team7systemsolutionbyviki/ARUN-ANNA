@@ -14,6 +14,24 @@ import { formatCurrency, getStatusBadgeHTML, formatDate, formatTime } from '../u
 import { exportToCSV } from '../utils/export-excel.js';
 
 export const AdminViews = {
+  // Audio Notification Synthesizer for New Incoming Order Alert
+  playNewOrderSound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 note
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5 note
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.45);
+    } catch (e) {}
+  },
+
   // --- ADMIN LOGIN PAGE ---
   renderLogin() {
     const app = document.getElementById('app-content');
@@ -263,6 +281,27 @@ export const AdminViews = {
       ChartsEngine.renderRevenueLineChart('chart-revenue-container');
       ChartsEngine.renderBarChart('chart-services-container');
     }, 100);
+
+    // Live Dashboard Refresh Timer (2.5s Polling)
+    if (window._adminDashboardSyncTimer) {
+      clearInterval(window._adminDashboardSyncTimer);
+    }
+    window._adminDashboardSyncTimer = setInterval(async () => {
+      if (!window.location.hash.startsWith('#admin-dashboard') && window.location.hash !== '#admin') {
+        clearInterval(window._adminDashboardSyncTimer);
+        window._adminDashboardSyncTimer = null;
+        return;
+      }
+      try {
+        const freshOrders = await DBService.getOrders();
+        const freshFingerprint = freshOrders.map(o => `${o.id}_${o.status}`).join('|');
+        if (window._lastDashboardFingerprint && freshFingerprint !== window._lastDashboardFingerprint) {
+          window._lastDashboardFingerprint = freshFingerprint;
+          this.renderDashboard();
+        }
+        window._lastDashboardFingerprint = freshFingerprint;
+      } catch (e) {}
+    }, 2500);
   },
 
   // --- ORDERS MANAGEMENT PIPELINE ---
@@ -511,12 +550,13 @@ export const AdminViews = {
 
     await this.renderAdminLayout('orders', html);
 
-    // Live Order Reception Polling Timer (Every 6 seconds — new orders only)
+    // Fast Real-Time Live Sync Engine (2.5s Polling + Audio Chime Alert)
     if (window._adminOrderSyncTimer) {
       clearInterval(window._adminOrderSyncTimer);
     }
     if (!window._deletedOrderIds) window._deletedOrderIds = new Set();
     window._knownOrderIds = new Set(orders.map(o => o.id));
+    window._lastOrderFingerprint = orders.map(o => `${o.id}_${o.status}`).join('|');
 
     window._adminOrderSyncTimer = setInterval(async () => {
       if (!window.location.hash.startsWith('#admin-orders')) {
@@ -526,17 +566,26 @@ export const AdminViews = {
       }
       try {
         const freshOrders = await DBService.getOrders();
-        // Only re-render if there is a genuinely NEW order id (not a deletion)
+        const freshFingerprint = freshOrders.map(o => `${o.id}_${o.status}`).join('|');
+
+        // Check for genuinely NEW incoming order
         const genuinelyNew = freshOrders.filter(o =>
           !window._knownOrderIds.has(o.id) && !window._deletedOrderIds.has(o.id)
         );
+
         if (genuinelyNew.length > 0) {
           window._knownOrderIds = new Set(freshOrders.map(o => o.id));
-          NotificationService.showToast(`🔔 NEW ORDER: ${genuinelyNew[0].id} (${genuinelyNew[0].customerName})!`, 'success');
+          window._lastOrderFingerprint = freshFingerprint;
+          this.playNewOrderSound();
+          NotificationService.showToast(`🔔 NEW ORDER RECEIVED: ${genuinelyNew[0].id} from ${genuinelyNew[0].customerName || 'Customer'}!`, 'success');
+          this.renderOrders(queryStr);
+        } else if (freshFingerprint !== window._lastOrderFingerprint) {
+          // Status update occurred
+          window._lastOrderFingerprint = freshFingerprint;
           this.renderOrders(queryStr);
         }
       } catch (e) {}
-    }, 6000);
+    }, 2500);
 
     // Global Order Action Helpers
     window.deleteOrderRecord = (orderId) => {

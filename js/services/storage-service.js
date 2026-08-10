@@ -258,31 +258,19 @@ export const StorageService = {
     return { valid: true };
   },
 
-  // Resumable Firebase Cloud Storage Upload with Live Progress Callback
+  // Resumable Firebase Cloud Storage Upload with Live Progress Callback (Zero-Memory Main-Thread Streaming)
   async uploadFileResumable(file, orderId = 'temp', onProgress = null) {
     const val = this.validateFile(file);
     if (!val.valid) {
       throw new Error(val.error);
     }
 
-    const idbKey = 'idb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
     const uploadedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(); // 7 days
-
-    // Store in local IndexedDB for immediate fallback
-    await this.saveToIDB(idbKey, file);
 
     const { storage, isDemo } = getServices();
     let downloadUrl = '';
     let storagePath = '';
-    let dataUrl = '';
-
-    // Convert small/medium files (<= 10MB) to Data URL for instant local fallback
-    if (file.size <= 10 * 1024 * 1024) {
-      try {
-        dataUrl = await this.readFileAsDataURL(file);
-      } catch (e) {}
-    }
 
     if (!isDemo && storage) {
       try {
@@ -304,6 +292,7 @@ export const StorageService = {
         };
 
         const uploadTask = uploadBytesResumable(fileRef, file, metadata);
+        const startTime = Date.now();
 
         // Wrap uploadTask in a Promise to track live progress
         downloadUrl = await new Promise((resolve, reject) => {
@@ -311,8 +300,21 @@ export const StorageService = {
             'state_changed',
             (snapshot) => {
               const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              const now = Date.now();
+              const elapsed = (now - startTime) / 1000; // total elapsed seconds
+              const speed = elapsed > 0.2 ? (snapshot.bytesTransferred / elapsed) : 0; // average bytes/sec
+              const remainingBytes = Math.max(0, snapshot.totalBytes - snapshot.bytesTransferred);
+              const remainingSecs = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
+
               if (typeof onProgress === 'function') {
-                onProgress(progress, snapshot.state);
+                onProgress({
+                  progress: progress,
+                  bytesTransferred: snapshot.bytesTransferred,
+                  totalBytes: snapshot.totalBytes,
+                  speed: speed,
+                  remainingSecs: remainingSecs,
+                  state: snapshot.state
+                });
               }
             },
             (error) => {
@@ -333,13 +335,11 @@ export const StorageService = {
         console.log('✅ Original file successfully stored in Firebase Storage:', storagePath);
       } catch (err) {
         console.warn('Firebase Storage upload failed:', err);
-        storagePath = '';
-        downloadUrl = '';
         throw new Error(`Cloud upload failed for "${file.name}". Please check internet connection and retry.`);
       }
     } else {
       // Demo / Fallback mode
-      downloadUrl = dataUrl || ('idb://' + idbKey);
+      downloadUrl = URL.createObjectURL(file);
       if (typeof onProgress === 'function') onProgress(100, 'SUCCESS');
     }
 
@@ -347,8 +347,6 @@ export const StorageService = {
       uploadStatus: 'uploaded',
       downloadURL: downloadUrl,
       url: downloadUrl,
-      dataUrl: dataUrl,
-      idbKey: idbKey,
       storagePath: storagePath,
       fileName: file.name,
       name: file.name,

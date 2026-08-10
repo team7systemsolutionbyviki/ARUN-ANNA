@@ -819,32 +819,99 @@ export const PublicViews = {
         }
       }
 
-      // Step 1: Render Animated Processing Screen
+      // Step 1: Render Animated Fast Upload Screen (Dual Independent Status Cards)
       statusBox.innerHTML = `
-        <div style="background:var(--bg-card); border:2px dashed var(--primary); border-radius:14px; padding:1.5rem; text-align:center; box-shadow:var(--shadow-md);" class="animate-fade-in">
-          <div style="display:inline-block; font-size:2.75rem; margin-bottom:0.5rem; animation: spin 1.5s linear infinite;">⚙️</div>
-          <h4 style="font-size:1.15rem; font-weight:700; color:var(--primary); margin-bottom:0.25rem;">Processing & Scanning PDF Files...</h4>
-          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">Reading page count, parsing PDF structure & storing locally for high-speed printing...</p>
-          
-          <!-- Animated Progress Bar -->
-          <div style="width:100%; height:12px; background:var(--bg-body); border-radius:20px; overflow:hidden; border:1px solid var(--border-color); margin-bottom:0.75rem;">
-            <div id="pdf-progress-bar" style="width: 20%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); transition: width 0.25s ease;"></div>
+        <div style="background:var(--bg-card); border:2px dashed var(--primary); border-radius:14px; padding:1.5rem; box-shadow:var(--shadow-md);" class="animate-fade-in">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem; flex-wrap:wrap; gap:0.5rem;">
+            <div>
+              <h4 style="font-size:1.1rem; font-weight:800; color:var(--primary); margin:0;" id="upload-status-title">☁️ Uploading to Secure Cloud Storage...</h4>
+              <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0.2rem;" id="upload-status-filename">${validFiles[0].name} (${StorageService.formatBytes(validFiles[0].size)})</p>
+            </div>
+            <div id="page-count-status-box">
+              <span id="page-count-status-pill" style="font-size:0.78rem; background:rgba(59,130,246,0.14); color:#2563eb; font-weight:700; padding:0.3rem 0.7rem; border-radius:12px; border:1px solid rgba(59,130,246,0.3); display:inline-flex; align-items:center; gap:0.4rem;">
+                <span style="display:inline-block; width:7px; height:7px; background:#3b82f6; border-radius:50%; animation: pulse 1.2s infinite;"></span>
+                Detecting pages...
+              </span>
+            </div>
           </div>
           
-          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:600; color:var(--text-muted);">
-            <span id="pdf-progress-text">Processing: ${validFiles[0].name}...</span>
-            <span id="pdf-progress-percent">20%</span>
+          <!-- Animated Upload Progress Bar -->
+          <div style="width:100%; height:12px; background:var(--bg-body); border-radius:20px; overflow:hidden; border:1px solid var(--border-color); margin-bottom:0.75rem;">
+            <div id="pdf-progress-bar" style="width: 2%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); transition: width 0.2s ease;"></div>
+          </div>
+          
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:600; color:var(--text-muted); flex-wrap:wrap; gap:0.5rem;">
+            <span id="pdf-progress-text">0.0 MB / ${StorageService.formatBytes(validFiles[0].size)}</span>
+            <span id="pdf-progress-speed" style="color:var(--primary); font-weight:700;">Starting upload...</span>
+            <span id="pdf-progress-percent" style="font-weight:800; color:var(--text-main);">0%</span>
           </div>
         </div>
       `;
 
-      const updateProgress = (pct, filename) => {
+      const updateUploadMetrics = (data, filename, totalSize) => {
         const bar = document.getElementById('pdf-progress-bar');
         const txt = document.getElementById('pdf-progress-text');
+        const speedEl = document.getElementById('pdf-progress-speed');
         const perc = document.getElementById('pdf-progress-percent');
-        if (bar) bar.style.width = pct + '%';
-        if (txt && filename) txt.innerText = `Processing: ${filename}...`;
+
+        const pct = typeof data === 'object' ? data.progress : data;
+        if (bar) bar.style.width = Math.max(2, pct) + '%';
         if (perc) perc.innerText = pct + '%';
+
+        if (typeof data === 'object') {
+          const transferredMB = StorageService.formatBytes(data.bytesTransferred);
+          const totalMB = StorageService.formatBytes(data.totalBytes);
+          if (txt) txt.innerText = `${transferredMB} / ${totalMB}`;
+
+          if (speedEl) {
+            if (pct >= 100) {
+              speedEl.innerText = `✓ Upload complete`;
+              speedEl.style.color = '#10b981';
+            } else if (data.speed > 0) {
+              const speedStr = StorageService.formatBytes(data.speed) + '/s';
+              const remainingStr = data.remainingSecs > 0 ? ` • ${data.remainingSecs}s remaining` : '';
+              speedEl.innerText = `⚡ ${speedStr}${remainingStr}`;
+              speedEl.style.color = 'var(--primary)';
+            }
+          }
+        }
+      };
+
+      const updatePageCountStatus = (text, isSuccess = true, fileRef = null) => {
+        const box = document.getElementById('page-count-status-box');
+        if (!box) return;
+
+        if (isSuccess) {
+          box.innerHTML = `
+            <span style="font-size:0.78rem; background:rgba(16,185,129,0.14); color:#059669; font-weight:700; padding:0.3rem 0.7rem; border-radius:12px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.4rem;">
+              ✓ ${text}
+            </span>
+          `;
+        } else {
+          box.innerHTML = `
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <span style="font-size:0.75rem; background:rgba(245,158,11,0.14); color:#d97706; font-weight:700; padding:0.25rem 0.5rem; border-radius:8px;">
+                ⚠️ Page count unverified
+              </span>
+              <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.4rem;" id="btn-retry-page-count">🔄 Retry Page Count</button>
+            </div>
+          `;
+          const btn = document.getElementById('btn-retry-page-count');
+          if (btn && fileRef) {
+            btn.onclick = async () => {
+              btn.innerText = '⏳ Retrying...';
+              const p = await StorageService.estimatePdfPages(fileRef).catch(() => 1);
+              updatePageCountStatus(`${p} page(s) detected`, true, fileRef);
+              const target = state.files.find(f => f.name === fileRef.name);
+              if (target) {
+                target.pages = p;
+                state.totalPages = state.files.reduce((acc, f) => acc + f.pages, 0);
+                renderFileList();
+                updateCalculations();
+              }
+            };
+          }
+        }
       };
 
       let newlyUploadedCount = 0;
@@ -858,15 +925,27 @@ export const PublicViews = {
           continue;
         }
 
-        updateProgress(5, file.name);
-
         try {
-          const estPages = await StorageService.estimatePdfPages(file);
-
-          // 2. Perform Resumable Upload to Firebase Storage with live progress callback
-          const uploaded = await StorageService.uploadFileResumable(file, 'orders', (pct) => {
-            updateProgress(pct, file.name);
+          // 2. START FIREBASE UPLOAD IMMEDIATELY (0ms delay)
+          const uploadPromise = StorageService.uploadFileResumable(file, 'orders', (metrics) => {
+            updateUploadMetrics(metrics, file.name, file.size);
           });
+
+          // 3. START PDF PAGE COUNT IN PARALLEL (Independent, Non-Blocking)
+          const pageCountPromise = StorageService.estimatePdfPages(file).catch(() => null);
+
+          // Listen to page count completion independently
+          pageCountPromise.then((p) => {
+            if (p && p > 0) {
+              updatePageCountStatus(`${p} page(s) detected`, true, file);
+            } else {
+              updatePageCountStatus(`Page count unverified`, false, file);
+            }
+          });
+
+          // Wait for Firebase Storage upload task to complete
+          const uploaded = await uploadPromise;
+          const estPages = (await pageCountPromise) || 1;
 
           state.files.push({
             fileName: file.name,
@@ -878,8 +957,6 @@ export const PublicViews = {
             storagePath: uploaded.storagePath || '',
             downloadURL: uploaded.downloadURL || uploaded.url || '',
             url: uploaded.downloadURL || uploaded.url || '',
-            dataUrl: uploaded.dataUrl || '',
-            idbKey: uploaded.idbKey || '',
             uploadStatus: 'uploaded',
             uploadedAt: uploaded.uploadedAt || new Date().toISOString(),
             expiresAt: uploaded.expiresAt || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
@@ -903,7 +980,7 @@ export const PublicViews = {
         }
       }
 
-      updateProgress(100, 'Upload Complete!');
+      updateUploadMetrics(100, validFiles[0].name, validFiles[0].size);
       await new Promise(r => setTimeout(r, 200));
 
       // Render PDF Upload Successful Screen
@@ -1379,52 +1456,72 @@ export const PublicViews = {
   // --- TRACK ORDER PAGE ---
   async renderTrackOrder(queryStr = '') {
     const app = document.getElementById('app-content');
-    const paramId = new URLSearchParams(queryStr).get('id') || '';
+    
+    // Safely parse order ID or query string
+    let paramId = '';
+    if (queryStr) {
+      const match = queryStr.match(/id=([^&]+)/);
+      paramId = match ? match[1] : queryStr.replace(/^#?track\??/, '').trim();
+    }
 
     app.innerHTML = `
-      <section style="padding: 4rem 0;">
-        <div class="container" style="max-width:800px;">
+      <section style="padding: 3.5rem 0;">
+        <div class="container" style="max-width:850px;">
           <div class="text-center mb-4">
-            <h1 style="font-size:2.5rem;">${I18nService.t('track_title')}</h1>
-            <p class="text-muted">${I18nService.t('track_subtitle')}</p>
+            <h1 style="font-size:2.5rem; font-weight:800; color:var(--text-main);">${I18nService.t('track_title')}</h1>
+            <p class="text-muted" style="font-size:1rem; margin-top:0.35rem;">${I18nService.t('track_subtitle')}</p>
           </div>
 
           <!-- Search Box -->
-          <div class="glass-panel" style="padding:1.5rem; margin-bottom:2rem;">
-            <div style="display:flex; gap:0.75rem;">
-              <input type="text" class="form-control" id="track-search-input" placeholder="${I18nService.t('track_order_id')} / ${I18nService.t('track_phone')}..." value="${paramId}">
-              <button class="btn btn-primary" id="btn-perform-track">${I18nService.t('track_btn')}</button>
+          <div class="glass-panel" style="padding:1.5rem; margin-bottom:2rem; border-radius:16px; border:1px solid var(--border-color); box-shadow:var(--shadow-md);">
+            <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+              <input type="text" class="form-control" id="track-search-input" style="flex:1; min-width:260px; font-size:1rem; padding:0.75rem 1rem;" placeholder="Enter Order ID (e.g. ORD-2026-...) or Mobile Number..." value="${paramId}">
+              <button class="btn btn-primary" id="btn-perform-track" style="padding:0.75rem 1.75rem; font-weight:700;">🔍 ${I18nService.t('track_btn')}</button>
             </div>
           </div>
 
+          <!-- Live Status Indicator -->
+          <div id="track-live-sync-indicator" style="display:none; text-align:right; margin-bottom:1rem;">
+            <span style="font-size:0.75rem; background:rgba(16,185,129,0.15); color:#059669; font-weight:700; padding:0.25rem 0.65rem; border-radius:14px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.4rem;">
+              <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%; animation: pulse 1.5s infinite;"></span>
+              Live Sync Active
+            </span>
+          </div>
+
           <!-- Search Results Container -->
-          <div id="track-results-container"></div>
+          <div id="track-results-container">
+            <div class="text-center text-muted" style="padding:2rem;">
+              <div style="font-size:2.5rem; margin-bottom:0.5rem; animation: spin 2s linear infinite;">⚙️</div>
+              Fetching live order status from Cloud Database...
+            </div>
+          </div>
         </div>
       </section>
     `;
 
     const renderOrderTrackCard = (order) => {
-      const isCompleted = order.status === 'Completed';
-      const isReady = order.status === 'Ready for Pickup';
-      const isPrinting = order.status === 'Printing';
-      const isApproved = order.status === 'Payment Approved';
+      const isCompleted = order.status === 'Completed' || order.orderStatus === 'Completed';
+      const isReady = order.status === 'Ready for Pickup' || order.orderStatus === 'Ready for Pickup';
+      const isPrinting = order.status === 'Printing' || order.orderStatus === 'Printing';
+      const isApproved = order.status === 'Payment Approved' || order.orderStatus === 'Payment Approved';
+      const currentStatus = order.status || order.orderStatus || 'Waiting Verification';
 
       return `
-      <div class="glass-panel" style="padding:2rem; margin-bottom:1.5rem; border-left: 5px solid ${isCompleted ? '#10b981' : isReady ? '#3b82f6' : 'var(--primary)'}; shadow: var(--shadow-md);">
+      <div class="glass-panel" style="padding:2rem; margin-bottom:1.5rem; border-left: 6px solid ${isCompleted ? '#10b981' : isReady ? '#3b82f6' : 'var(--primary)'}; border-radius:16px; box-shadow:var(--shadow-md);" class="animate-fade-in">
         
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:1rem; margin-bottom:1.25rem; flex-wrap:wrap; gap:0.75rem;">
           <div>
             <div style="display:flex; align-items:center; gap:0.6rem;">
-              <h3 style="color:var(--primary); font-size:1.4rem; margin:0;">${order.id}</h3>
+              <h3 style="color:var(--primary); font-size:1.45rem; font-weight:800; margin:0;">${order.id || order.orderId}</h3>
               <span style="font-size:0.72rem; background:rgba(16,185,129,0.15); color:#059669; font-weight:700; padding:0.2rem 0.55rem; border-radius:12px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.3rem;">
                 <span style="display:inline-block; width:7px; height:7px; background:#10b981; border-radius:50%;"></span>
-                Live Sync Active
+                Live Order
               </span>
             </div>
             <p class="text-muted" style="font-size:0.85rem; margin-top:0.25rem;">Placed on: ${formatDate(order.createdAt)} at ${formatTime(order.createdAt)}</p>
           </div>
           <div>
-            ${getStatusBadgeHTML(order.status)}
+            ${getStatusBadgeHTML(currentStatus)}
           </div>
         </div>
 
@@ -1432,7 +1529,7 @@ export const PublicViews = {
         <div style="margin:1.5rem 0;">
           <h4 style="font-size:0.85rem; font-weight:700; color:var(--text-muted); margin-bottom:0.85rem; text-transform:uppercase; letter-spacing:0.5px;">Order Progression Timeline:</h4>
           <div class="timeline">
-            <div class="timeline-item ${order.status !== 'Pending Payment' ? 'completed' : 'active'}">
+            <div class="timeline-item ${currentStatus !== 'Pending Payment' ? 'completed' : 'active'}">
               <div class="timeline-icon">✓</div>
               <div class="timeline-content">
                 <div style="font-weight:700;">Order Received & Verified</div>
@@ -1440,15 +1537,15 @@ export const PublicViews = {
               </div>
             </div>
 
-            <div class="timeline-item ${['Payment Approved', 'Printing', 'Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : isApproved || isPrinting ? 'active' : ''}">
+            <div class="timeline-item ${['Payment Approved', 'Printing', 'Ready for Pickup', 'Completed'].includes(currentStatus) ? 'completed' : isApproved || isPrinting ? 'active' : ''}">
               <div class="timeline-icon">${isPrinting ? '🖨️' : '💳'}</div>
               <div class="timeline-content">
-                <div style="font-weight:700;">Payment Approved & Document Printing</div>
+                <div style="font-weight:700;">Payment Approved & Printing</div>
                 <div style="font-size:0.8rem; color:var(--text-muted);">${isPrinting ? '🖨️ Currently printing your document packages...' : 'Payment verified by shop desk'}</div>
               </div>
             </div>
 
-            <div class="timeline-item ${['Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : ''}">
+            <div class="timeline-item ${['Ready for Pickup', 'Completed'].includes(currentStatus) ? 'completed' : ''}">
               <div class="timeline-icon">📦</div>
               <div class="timeline-content">
                 <div style="font-weight:700;">${(order.pricing?.deliveryFee && order.pricing.deliveryFee > 0) ? 'Out for Delivery' : 'Ready for Store Pickup'}</div>
@@ -1459,7 +1556,7 @@ export const PublicViews = {
         </div>
 
         <!-- Summary info -->
-        <div style="background:var(--bg-card); padding:1rem 1.25rem; border-radius:10px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div style="background:var(--bg-card); padding:1rem 1.25rem; border-radius:12px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
           <div>
             <span style="font-size:0.85rem; color:var(--text-muted);">Customer:</span> <b>${order.customerName || 'Customer'}</b> (${order.customerPhone || 'N/A'})
             <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">
@@ -1468,7 +1565,7 @@ export const PublicViews = {
           </div>
           <div style="text-align:right;">
             <span style="font-size:0.85rem; color:var(--text-muted);">Grand Total:</span>
-            <div style="font-size:1.35rem; font-weight:800; color:var(--primary);">${formatCurrency(order.pricing?.total)}</div>
+            <div style="font-size:1.35rem; font-weight:800; color:var(--primary);">${formatCurrency(order.pricing?.total || order.totalAmount || 0)}</div>
           </div>
         </div>
       </div>
@@ -1478,51 +1575,77 @@ export const PublicViews = {
     const searchAction = async (isSilentUpdate = false) => {
       const val = document.getElementById('track-search-input')?.value.trim();
       const container = document.getElementById('track-results-container');
+      const syncIndicator = document.getElementById('track-live-sync-indicator');
       if (!container) return;
 
+      let results = [];
+
       if (!val) {
-        if (!isSilentUpdate) {
-          container.innerHTML = `<div class="text-center text-muted">Please enter an Order ID or Mobile Number above.</div>`;
+        // If search input is empty, auto-fetch recent orders for convenience
+        const allOrders = await DBService.getOrders();
+        results = allOrders.slice(0, 3); // top 3 recent orders
+        if (results.length === 0) {
+          if (!isSilentUpdate) {
+            container.innerHTML = `
+              <div class="glass-panel text-center" style="padding:2.5rem; border-radius:16px;">
+                <div style="font-size:3rem; margin-bottom:0.5rem;">📑</div>
+                <h3>No Orders Found</h3>
+                <p class="text-muted" style="margin-top:0.35rem;">Please enter your Order ID or Mobile Number above to check order status.</p>
+              </div>
+            `;
+          }
+          if (syncIndicator) syncIndicator.style.display = 'none';
+          return;
         }
-        return;
+      } else {
+        results = await DBService.searchOrders(val);
       }
 
-      const results = await DBService.searchOrders(val);
       if (results.length === 0) {
         if (!isSilentUpdate) {
           container.innerHTML = `
-            <div class="glass-panel text-center" style="padding:2.5rem;">
-              <div style="font-size:3rem;">🔍</div>
-              <h3>No orders found</h3>
-              <p class="text-muted" style="margin-top:0.5rem;">We couldn't find any order matching "${val}". Please check the ID or Phone number.</p>
+            <div class="glass-panel text-center" style="padding:2.5rem; border-radius:16px;">
+              <div style="font-size:3rem; margin-bottom:0.5rem;">🔍</div>
+              <h3>No matching order found</h3>
+              <p class="text-muted" style="margin-top:0.35rem;">We couldn't find any order matching "<b>${val}</b>". Please check your Order ID or Phone number.</p>
             </div>
           `;
         }
+        if (syncIndicator) syncIndicator.style.display = 'none';
         return;
       }
 
-      // Check if status changed compared to previous render
-      let statusChanged = false;
+      if (syncIndicator) syncIndicator.style.display = 'block';
+
+      // Track status changes live
       results.forEach(freshOrder => {
-        const lastStatus = window._lastTrackedStatuses ? window._lastTrackedStatuses[freshOrder.id] : null;
-        if (lastStatus && lastStatus !== freshOrder.status) {
-          statusChanged = true;
-          NotificationService.showToast(`🔔 Status Update: Order ${freshOrder.id} is now '${freshOrder.status}'!`, 'success');
+        const orderIdKey = freshOrder.id || freshOrder.orderId;
+        const currentStatus = freshOrder.status || freshOrder.orderStatus;
+        const lastStatus = window._lastTrackedStatuses ? window._lastTrackedStatuses[orderIdKey] : null;
+        if (lastStatus && lastStatus !== currentStatus) {
+          NotificationService.showToast(`🔔 Live Update: Order ${orderIdKey} is now '${currentStatus}'!`, 'success');
         }
         if (!window._lastTrackedStatuses) window._lastTrackedStatuses = {};
-        window._lastTrackedStatuses[freshOrder.id] = freshOrder.status;
+        window._lastTrackedStatuses[orderIdKey] = currentStatus;
       });
 
-      if (!isSilentUpdate || statusChanged || !container.innerHTML.includes(results[0].id)) {
-        container.innerHTML = results.map(order => renderOrderTrackCard(order)).join('');
-      }
+      container.innerHTML = results.map(order => renderOrderTrackCard(order)).join('');
     };
 
     const searchBtn = document.getElementById('btn-perform-track');
     if (searchBtn) searchBtn.onclick = () => searchAction(false);
-    if (paramId) searchAction(false);
 
-    // --- LIVE REFRESH SYNC TIMER FOR TRACK ORDER PAGE (3-second Polling) ---
+    const searchInput = document.getElementById('track-search-input');
+    if (searchInput) {
+      searchInput.onkeyup = (e) => {
+        if (e.key === 'Enter') searchAction(false);
+      };
+    }
+
+    // Run initial search
+    searchAction(false);
+
+    // Live 3-second auto-sync polling
     if (window._trackOrderSyncTimer) {
       clearInterval(window._trackOrderSyncTimer);
     }
