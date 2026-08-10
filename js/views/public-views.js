@@ -1398,12 +1398,20 @@ export const PublicViews = {
           if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
             try {
               const screenshotFile = screenshotInput.files[0];
-              screenshotDataUrl = await StorageService.readFileAsDataURL(screenshotFile);
-              const uploaded = await StorageService.uploadFile(screenshotFile, 'receipts');
-              screenshotUrl = uploaded.url || screenshotDataUrl || '';
-              screenshotIdbKey = uploaded.idbKey || '';
+              screenshotDataUrl = await StorageService.readFileAsDataURL(screenshotFile).catch(() => '');
+              // Resumable Upload attempt with 3.5-second race timeout guard
+              const uploadTask = StorageService.uploadFileResumable(screenshotFile, 'receipts');
+              const timeoutTask = new Promise(r => setTimeout(() => r(null), 3500));
+              const uploaded = await Promise.race([uploadTask, timeoutTask]).catch(() => null);
+              if (uploaded && (uploaded.url || uploaded.downloadURL)) {
+                screenshotUrl = uploaded.url || uploaded.downloadURL;
+                screenshotIdbKey = uploaded.idbKey || '';
+              } else {
+                screenshotUrl = screenshotDataUrl;
+              }
             } catch (err) {
-              console.warn('Screenshot processing failed, proceeding with dataUrl:', err);
+              console.warn('Screenshot upload warning, fallback to dataUrl:', err);
+              screenshotUrl = screenshotDataUrl;
             }
           }
 

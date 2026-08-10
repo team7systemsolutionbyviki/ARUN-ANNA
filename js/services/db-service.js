@@ -459,29 +459,36 @@ export const DBService = {
       console.warn("Local storage save warning:", err);
     }
 
-    // Save Cloud: Firestore + Realtime Database
+    // Save Cloud: Firestore + Realtime Database (with 4s max timeout guard so submit never hangs)
     const { db, firebaseApp, isDemo } = getServices();
     if (!isDemo && firebaseApp) {
-      // 1. Firestore insert (sanitized for 1MB doc limit)
+      const cloudTasks = [];
+
+      // 1. Firestore insert
       if (db) {
-        try {
-          const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-          await setDoc(doc(db, "orders", newId), this.sanitizeForCloud(newOrder, true));
-          console.log("✅ Order synced to Firestore:", newId);
-        } catch (err) {
-          console.warn("Firestore order insert warning:", err);
-        }
+        cloudTasks.push(
+          getCachedFirestoreSDK().then(async (fsSDK) => {
+            if (!fsSDK) return;
+            const { doc, setDoc } = fsSDK;
+            await setDoc(doc(db, "orders", newId), this.sanitizeForCloud(newOrder, true));
+            console.log("✅ Order synced to Firestore:", newId);
+          }).catch(err => console.warn("Firestore order insert warning:", err))
+        );
       }
 
-      // 2. Realtime Database insert (Guaranteed fallback up to 10MB node limit for cross-device reception)
-      try {
-        const { getDatabase, ref, set } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js");
-        const rtdb = getDatabase(firebaseApp);
-        await set(ref(rtdb, 'orders/' + newId), this.sanitizeForCloud(newOrder, false));
-        console.log("✅ Order synced to Realtime Database:", newId);
-      } catch (err) {
-        console.warn("RTDB order insert warning:", err);
-      }
+      // 2. Realtime Database insert
+      cloudTasks.push(
+        getCachedRtdbSDK().then(async (rtdbSDK) => {
+          if (!rtdbSDK) return;
+          const { getDatabase, ref, set } = rtdbSDK;
+          const rtdb = getDatabase(firebaseApp);
+          await set(ref(rtdb, 'orders/' + newId), this.sanitizeForCloud(newOrder, false));
+          console.log("✅ Order synced to Realtime Database:", newId);
+        }).catch(err => console.warn("RTDB order insert warning:", err))
+      );
+
+      const timeoutGuard = new Promise(r => setTimeout(r, 3500));
+      await Promise.race([Promise.all(cloudTasks), timeoutGuard]);
     }
 
     return newOrder;
