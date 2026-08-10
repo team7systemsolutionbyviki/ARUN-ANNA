@@ -42,7 +42,7 @@ window.updateFloatingButtons = async () => {
 const initApp = async () => {
   try {
     DBService.initLocalStore();
-    await initFirebase().catch(err => console.warn('Firebase init deferred:', err));
+    initFirebase().catch(err => console.warn('Firebase init deferred:', err));
   } catch (e) {
     console.warn('Init store warning:', e);
   }

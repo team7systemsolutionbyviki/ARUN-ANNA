@@ -258,99 +258,31 @@ export const StorageService = {
     return { valid: true };
   },
 
-  // Server-Side HTTPS API Upload Client (XMLHttpRequest multipart/form-data upload)
-  // Completely bypasses browser-to-Firebase Storage CORS checks!
-  async uploadFileApi(file, orderId = 'temp', onProgress = null) {
-    const val = this.validateFile(file);
-    if (!val.valid) {
-      throw new Error(val.error);
-    }
-
-    // Configured Server-Side HTTPS Cloud Functions API Endpoint
-    const API_URL = window.SERVER_UPLOAD_API_URL || 'https://us-central1-printing-app-9a63f.cloudfunctions.net/api/upload-document';
-
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('orderId', orderId);
-
-      const startTime = Date.now();
-
-      // Real XMLHttpRequest Upload Progress Listener
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          const elapsed = (Date.now() - startTime) / 1000;
-          const speed = elapsed > 0.2 ? (event.loaded / elapsed) : 0;
-          const remainingBytes = Math.max(0, event.total - event.loaded);
-          const remainingSecs = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
-
-          if (typeof onProgress === 'function') {
-            onProgress({
-              progress: progress,
-              bytesTransferred: event.loaded,
-              totalBytes: event.total,
-              speed: speed,
-              remainingSecs: remainingSecs
-            });
-          }
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const res = JSON.parse(xhr.responseText);
-            if (res.success) {
-              resolve(res);
-            } else {
-              reject(new Error(res.error || 'Server upload failed.'));
-            }
-          } catch (e) {
-            reject(new Error('Invalid JSON response from upload server.'));
-          }
-        } else {
-          try {
-            const errRes = JSON.parse(xhr.responseText);
-            reject(new Error(errRes.error || `HTTP ${xhr.status} Server Error`));
-          } catch (e) {
-            reject(new Error(`Server Upload Error (HTTP ${xhr.status})`));
-          }
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        // Fallback to client-side upload gracefully if Cloud Function endpoint is offline
-        this.uploadFileResumable(file, orderId, onProgress).then(resolve).catch(reject);
-      });
-
-      xhr.open('POST', API_URL, true);
-      xhr.send(formData);
-    });
-  },
-
-  // Resumable Firebase Cloud Storage Upload with Live Progress Callback (Zero-Memory Main-Thread Streaming)
+  // Resumable Firebase Cloud Storage Upload with Live Progress Callback
   async uploadFileResumable(file, orderId = 'temp', onProgress = null) {
     const val = this.validateFile(file);
     if (!val.valid) {
       throw new Error(val.error);
     }
 
+    const idbKey = 'idb_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
     const uploadedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(); // 7 days
 
-    const { storage, auth, isDemo } = getServices();
+    // Store in local IndexedDB for immediate fallback
+    await this.saveToIDB(idbKey, file);
+
+    const { storage, isDemo } = getServices();
     let downloadUrl = '';
     let storagePath = '';
+    let dataUrl = '';
 
-    console.log("[UPLOAD DIAGNOSTIC] Starting file upload processing...");
-    console.log("[UPLOAD DIAGNOSTIC] File name:", file.name);
-    console.log("[UPLOAD DIAGNOSTIC] File size:", file.size, `(${this.formatBytes(file.size)})`);
-    console.log("[UPLOAD DIAGNOSTIC] File type:", file.type);
-    console.log("[UPLOAD DIAGNOSTIC] Mode:", isDemo ? 'DEMO' : 'FIREBASE');
-    console.log("[UPLOAD DIAGNOSTIC] Storage Bucket:", storage?.app?.options?.storageBucket || 'None');
-    console.log("[UPLOAD DIAGNOSTIC] Auth User UID:", auth?.currentUser?.uid || 'Unauthenticated (Anonymous session missing)');
+    // Convert small/medium files (<= 10MB) to Data URL for instant local fallback
+    if (file.size <= 10 * 1024 * 1024) {
+      try {
+        dataUrl = await this.readFileAsDataURL(file);
+      } catch (e) {}
+    }
 
     if (!isDemo && storage) {
       try {
@@ -362,9 +294,6 @@ export const StorageService = {
         storagePath = `orders/${orderId}/original/${Date.now()}_${cleanFileName}`;
         const fileRef = ref(storage, storagePath);
 
-        console.log("[UPLOAD DIAGNOSTIC] Created Storage Reference:", storagePath);
-        console.log("[UPLOAD DIAGNOSTIC] Initiating uploadBytesResumable task...");
-
         const metadata = {
           contentType: file.type || 'application/pdf',
           customMetadata: {
@@ -375,62 +304,26 @@ export const StorageService = {
         };
 
         const uploadTask = uploadBytesResumable(fileRef, file, metadata);
-        console.log("[UPLOAD DIAGNOSTIC] uploadBytesResumable Task Object created successfully:", uploadTask);
-        const startTime = Date.now();
 
         // Wrap uploadTask in a Promise to track live progress
         downloadUrl = await new Promise((resolve, reject) => {
-          let hasReceivedProgress = false;
-
-          // 10-Second Timeout Monitor: If 0% progress after 10s, report connection diagnostic
-          const progressMonitorTimeout = setTimeout(() => {
-            if (!hasReceivedProgress) {
-              console.warn("[UPLOAD DIAGNOSTIC WARNING] No upload progress received after 10s. Checking Storage connectivity...");
-            }
-          }, 10000);
-
           uploadTask.on(
             'state_changed',
             (snapshot) => {
-              hasReceivedProgress = true;
-              clearTimeout(progressMonitorTimeout);
-
               const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-              const now = Date.now();
-              const elapsed = (now - startTime) / 1000; // total elapsed seconds
-              const speed = elapsed > 0.2 ? (snapshot.bytesTransferred / elapsed) : 0; // average bytes/sec
-              const remainingBytes = Math.max(0, snapshot.totalBytes - snapshot.bytesTransferred);
-              const remainingSecs = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
-
-              console.log(`[UPLOAD DIAGNOSTIC] Progress: ${snapshot.bytesTransferred} / ${snapshot.totalBytes} (${progress}%) @ ${this.formatBytes(speed)}/s`);
-
               if (typeof onProgress === 'function') {
-                onProgress({
-                  progress: progress,
-                  bytesTransferred: snapshot.bytesTransferred,
-                  totalBytes: snapshot.totalBytes,
-                  speed: speed,
-                  remainingSecs: remainingSecs,
-                  state: snapshot.state
-                });
+                onProgress(progress, snapshot.state);
               }
             },
             (error) => {
-              clearTimeout(progressMonitorTimeout);
-              console.error('[UPLOAD DIAGNOSTIC ERROR] Firebase Storage Upload Task Error:', error);
-              console.error('[UPLOAD DIAGNOSTIC ERROR CODE]:', error.code);
-              console.error('[UPLOAD DIAGNOSTIC ERROR MESSAGE]:', error.message);
+              console.error('Firebase Storage resumable upload error:', error);
               reject(error);
             },
             async () => {
-              clearTimeout(progressMonitorTimeout);
               try {
-                console.log("[UPLOAD DIAGNOSTIC] Upload Task 100% Complete. Resolving Download URL...");
                 const url = await getDownloadURL(uploadTask.snapshot.ref);
-                console.log("[UPLOAD DIAGNOSTIC SUCCESS] Download URL resolved:", url);
                 resolve(url);
               } catch (err) {
-                console.error("[UPLOAD DIAGNOSTIC ERROR] Failed to fetch Download URL after upload:", err);
                 reject(err);
               }
             }
@@ -440,12 +333,13 @@ export const StorageService = {
         console.log('✅ Original file successfully stored in Firebase Storage:', storagePath);
       } catch (err) {
         console.warn('Firebase Storage upload failed:', err);
-        throw new Error(`Cloud upload failed for "${file.name}". ${err.message || 'Please check connection.'}`);
+        storagePath = '';
+        downloadUrl = '';
+        throw new Error(`Cloud upload failed for "${file.name}". Please check internet connection and retry.`);
       }
     } else {
       // Demo / Fallback mode
-      console.log("[UPLOAD DIAGNOSTIC] Running in Demo mode / fallback.");
-      downloadUrl = URL.createObjectURL(file);
+      downloadUrl = dataUrl || ('idb://' + idbKey);
       if (typeof onProgress === 'function') onProgress(100, 'SUCCESS');
     }
 
@@ -453,6 +347,8 @@ export const StorageService = {
       uploadStatus: 'uploaded',
       downloadURL: downloadUrl,
       url: downloadUrl,
+      dataUrl: dataUrl,
+      idbKey: idbKey,
       storagePath: storagePath,
       fileName: file.name,
       name: file.name,
@@ -597,20 +493,5 @@ export const StorageService = {
         readerTail.readAsText(tailChunk);
       }
     });
-  }
-};
-
-// Expose standalone test upload helper for diagnostic testing via DevTools console
-window.debugUploadFile = async (file) => {
-  console.log("=== MINIMAL DIAGNOSTIC UPLOAD TEST START ===");
-  try {
-    const res = await StorageService.uploadFileResumable(file, 'diagnostic_test', (metrics) => {
-      console.log(`[TEST UPLOAD PROGRESS] ${metrics.progress}% (${metrics.bytesTransferred}/${metrics.totalBytes})`);
-    });
-    console.log("=== MINIMAL DIAGNOSTIC UPLOAD TEST SUCCESS ===", res);
-    return res;
-  } catch (err) {
-    console.error("=== MINIMAL DIAGNOSTIC UPLOAD TEST FAILED ===", err);
-    throw err;
   }
 };

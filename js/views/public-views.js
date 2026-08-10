@@ -819,99 +819,32 @@ export const PublicViews = {
         }
       }
 
-      // Step 1: Render Animated Fast Upload Screen (Dual Independent Status Cards)
+      // Step 1: Render Animated Processing Screen
       statusBox.innerHTML = `
-        <div style="background:var(--bg-card); border:2px dashed var(--primary); border-radius:14px; padding:1.5rem; box-shadow:var(--shadow-md);" class="animate-fade-in">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.85rem; flex-wrap:wrap; gap:0.5rem;">
-            <div>
-              <h4 style="font-size:1.1rem; font-weight:800; color:var(--primary); margin:0;" id="upload-status-title">☁️ Uploading to Secure Cloud Storage...</h4>
-              <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0.2rem;" id="upload-status-filename">${validFiles[0].name} (${StorageService.formatBytes(validFiles[0].size)})</p>
-            </div>
-            <div id="page-count-status-box">
-              <span id="page-count-status-pill" style="font-size:0.78rem; background:rgba(59,130,246,0.14); color:#2563eb; font-weight:700; padding:0.3rem 0.7rem; border-radius:12px; border:1px solid rgba(59,130,246,0.3); display:inline-flex; align-items:center; gap:0.4rem;">
-                <span style="display:inline-block; width:7px; height:7px; background:#3b82f6; border-radius:50%; animation: pulse 1.2s infinite;"></span>
-                Detecting pages...
-              </span>
-            </div>
-          </div>
+        <div style="background:var(--bg-card); border:2px dashed var(--primary); border-radius:14px; padding:1.5rem; text-align:center; box-shadow:var(--shadow-md);" class="animate-fade-in">
+          <div style="display:inline-block; font-size:2.75rem; margin-bottom:0.5rem; animation: spin 1.5s linear infinite;">⚙️</div>
+          <h4 style="font-size:1.15rem; font-weight:700; color:var(--primary); margin-bottom:0.25rem;">Processing & Scanning PDF Files...</h4>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:1rem;">Reading page count, parsing PDF structure & storing locally for high-speed printing...</p>
           
-          <!-- Animated Upload Progress Bar -->
+          <!-- Animated Progress Bar -->
           <div style="width:100%; height:12px; background:var(--bg-body); border-radius:20px; overflow:hidden; border:1px solid var(--border-color); margin-bottom:0.75rem;">
-            <div id="pdf-progress-bar" style="width: 2%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); transition: width 0.2s ease;"></div>
+            <div id="pdf-progress-bar" style="width: 20%; height:100%; background:linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); transition: width 0.25s ease;"></div>
           </div>
           
-          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:600; color:var(--text-muted); flex-wrap:wrap; gap:0.5rem;">
-            <span id="pdf-progress-text">0.0 MB / ${StorageService.formatBytes(validFiles[0].size)}</span>
-            <span id="pdf-progress-speed" style="color:var(--primary); font-weight:700;">Starting upload...</span>
-            <span id="pdf-progress-percent" style="font-weight:800; color:var(--text-main);">0%</span>
+          <div style="display:flex; justify-content:space-between; font-size:0.82rem; font-weight:600; color:var(--text-muted);">
+            <span id="pdf-progress-text">Processing: ${validFiles[0].name}...</span>
+            <span id="pdf-progress-percent">20%</span>
           </div>
         </div>
       `;
 
-      const updateUploadMetrics = (data, filename, totalSize) => {
+      const updateProgress = (pct, filename) => {
         const bar = document.getElementById('pdf-progress-bar');
         const txt = document.getElementById('pdf-progress-text');
-        const speedEl = document.getElementById('pdf-progress-speed');
         const perc = document.getElementById('pdf-progress-percent');
-
-        const pct = typeof data === 'object' ? data.progress : data;
-        if (bar) bar.style.width = Math.max(2, pct) + '%';
+        if (bar) bar.style.width = pct + '%';
+        if (txt && filename) txt.innerText = `Processing: ${filename}...`;
         if (perc) perc.innerText = pct + '%';
-
-        if (typeof data === 'object') {
-          const transferredMB = StorageService.formatBytes(data.bytesTransferred);
-          const totalMB = StorageService.formatBytes(data.totalBytes);
-          if (txt) txt.innerText = `${transferredMB} / ${totalMB}`;
-
-          if (speedEl) {
-            if (pct >= 100) {
-              speedEl.innerText = `✓ Upload complete`;
-              speedEl.style.color = '#10b981';
-            } else if (data.speed > 0) {
-              const speedStr = StorageService.formatBytes(data.speed) + '/s';
-              const remainingStr = data.remainingSecs > 0 ? ` • ${data.remainingSecs}s remaining` : '';
-              speedEl.innerText = `⚡ ${speedStr}${remainingStr}`;
-              speedEl.style.color = 'var(--primary)';
-            }
-          }
-        }
-      };
-
-      const updatePageCountStatus = (text, isSuccess = true, fileRef = null) => {
-        const box = document.getElementById('page-count-status-box');
-        if (!box) return;
-
-        if (isSuccess) {
-          box.innerHTML = `
-            <span style="font-size:0.78rem; background:rgba(16,185,129,0.14); color:#059669; font-weight:700; padding:0.3rem 0.7rem; border-radius:12px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.4rem;">
-              ✓ ${text}
-            </span>
-          `;
-        } else {
-          box.innerHTML = `
-            <div style="display:flex; align-items:center; gap:0.4rem;">
-              <span style="font-size:0.75rem; background:rgba(245,158,11,0.14); color:#d97706; font-weight:700; padding:0.25rem 0.5rem; border-radius:8px;">
-                ⚠️ Page count unverified
-              </span>
-              <button class="btn btn-sm btn-outline" style="font-size:0.7rem; padding:0.15rem 0.4rem;" id="btn-retry-page-count">🔄 Retry Page Count</button>
-            </div>
-          `;
-          const btn = document.getElementById('btn-retry-page-count');
-          if (btn && fileRef) {
-            btn.onclick = async () => {
-              btn.innerText = '⏳ Retrying...';
-              const p = await StorageService.estimatePdfPages(fileRef).catch(() => 1);
-              updatePageCountStatus(`${p} page(s) detected`, true, fileRef);
-              const target = state.files.find(f => f.name === fileRef.name);
-              if (target) {
-                target.pages = p;
-                state.totalPages = state.files.reduce((acc, f) => acc + f.pages, 0);
-                renderFileList();
-                updateCalculations();
-              }
-            };
-          }
-        }
       };
 
       let newlyUploadedCount = 0;
@@ -925,27 +858,15 @@ export const PublicViews = {
           continue;
         }
 
+        updateProgress(5, file.name);
+
         try {
-          // 2. START SERVER-SIDE HTTPS API MULTIPART UPLOAD (Bypasses Browser CORS completely)
-          const uploadPromise = StorageService.uploadFileApi(file, 'orders', (metrics) => {
-            updateUploadMetrics(metrics, file.name, file.size);
+          const estPages = await StorageService.estimatePdfPages(file);
+
+          // 2. Perform Resumable Upload to Firebase Storage with live progress callback
+          const uploaded = await StorageService.uploadFileResumable(file, 'orders', (pct) => {
+            updateProgress(pct, file.name);
           });
-
-          // 3. START PDF PAGE COUNT IN PARALLEL (Independent, Non-Blocking)
-          const pageCountPromise = StorageService.estimatePdfPages(file).catch(() => null);
-
-          // Listen to page count completion independently
-          pageCountPromise.then((p) => {
-            if (p && p > 0) {
-              updatePageCountStatus(`${p} page(s) detected`, true, file);
-            } else {
-              updatePageCountStatus(`Page count unverified`, false, file);
-            }
-          });
-
-          // Wait for Firebase Storage upload task to complete
-          const uploaded = await uploadPromise;
-          const estPages = (await pageCountPromise) || 1;
 
           state.files.push({
             fileName: file.name,
@@ -957,6 +878,8 @@ export const PublicViews = {
             storagePath: uploaded.storagePath || '',
             downloadURL: uploaded.downloadURL || uploaded.url || '',
             url: uploaded.downloadURL || uploaded.url || '',
+            dataUrl: uploaded.dataUrl || '',
+            idbKey: uploaded.idbKey || '',
             uploadStatus: 'uploaded',
             uploadedAt: uploaded.uploadedAt || new Date().toISOString(),
             expiresAt: uploaded.expiresAt || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
@@ -980,7 +903,7 @@ export const PublicViews = {
         }
       }
 
-      updateUploadMetrics(100, validFiles[0].name, validFiles[0].size);
+      updateProgress(100, 'Upload Complete!');
       await new Promise(r => setTimeout(r, 200));
 
       // Render PDF Upload Successful Screen
@@ -1398,20 +1321,12 @@ export const PublicViews = {
           if (screenshotInput && screenshotInput.files && screenshotInput.files[0]) {
             try {
               const screenshotFile = screenshotInput.files[0];
-              screenshotDataUrl = await StorageService.readFileAsDataURL(screenshotFile).catch(() => '');
-              // Resumable Upload attempt with 3.5-second race timeout guard
-              const uploadTask = StorageService.uploadFileResumable(screenshotFile, 'receipts');
-              const timeoutTask = new Promise(r => setTimeout(() => r(null), 3500));
-              const uploaded = await Promise.race([uploadTask, timeoutTask]).catch(() => null);
-              if (uploaded && (uploaded.url || uploaded.downloadURL)) {
-                screenshotUrl = uploaded.url || uploaded.downloadURL;
-                screenshotIdbKey = uploaded.idbKey || '';
-              } else {
-                screenshotUrl = screenshotDataUrl;
-              }
+              screenshotDataUrl = await StorageService.readFileAsDataURL(screenshotFile);
+              const uploaded = await StorageService.uploadFile(screenshotFile, 'receipts');
+              screenshotUrl = uploaded.url || screenshotDataUrl || '';
+              screenshotIdbKey = uploaded.idbKey || '';
             } catch (err) {
-              console.warn('Screenshot upload warning, fallback to dataUrl:', err);
-              screenshotUrl = screenshotDataUrl;
+              console.warn('Screenshot processing failed, proceeding with dataUrl:', err);
             }
           }
 
