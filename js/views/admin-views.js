@@ -68,12 +68,16 @@ export const AdminViews = {
     if (!app) return;
 
     app.innerHTML = `
+      <div class="admin-sidebar-overlay" id="admin-sidebar-overlay"></div>
       <div class="dashboard-wrapper">
         <!-- Sidebar Navigation -->
         <aside class="sidebar" id="admin-sidebar">
-          <div class="sidebar-header">
-            <div class="nav-brand-logo" style="width:34px; height:34px; font-size:1.1rem;">${brandLogoText}</div>
-            <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${brandName}">${brandName}</span>
+          <div class="sidebar-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:0.75rem; overflow:hidden;">
+              <div class="nav-brand-logo" style="width:34px; height:34px; font-size:1.1rem; flex-shrink:0;">${brandLogoText}</div>
+              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${brandName}">${brandName}</span>
+            </div>
+            <button id="admin-sidebar-close" style="background:transparent; border:none; font-size:1.3rem; cursor:pointer; color:var(--text-muted); padding:0.25rem;">✕</button>
           </div>
 
           <div class="sidebar-nav">
@@ -108,8 +112,11 @@ export const AdminViews = {
         <!-- Main Dashboard Body -->
         <main class="dashboard-main">
           <header class="dashboard-topbar">
-            <div style="font-weight:700; font-size:1.1rem; font-family:'Outfit', sans-serif;">
-              ${settings.shopName}
+            <div style="display:flex; align-items:center; gap:0.85rem;">
+              <button class="admin-sidebar-toggle" id="admin-sidebar-toggle" title="Toggle Navigation Menu">☰</button>
+              <div style="font-weight:700; font-size:1.1rem; font-family:'Outfit', sans-serif;">
+                ${settings.shopName}
+              </div>
             </div>
 
             <div style="display:flex; align-items:center; gap:1rem;">
@@ -124,6 +131,31 @@ export const AdminViews = {
         </main>
       </div>
     `;
+
+    // Mobile Sidebar Drawer Handlers
+    const adminSidebar = document.getElementById('admin-sidebar');
+    const adminOverlay = document.getElementById('admin-sidebar-overlay');
+    const adminToggle = document.getElementById('admin-sidebar-toggle');
+    const adminClose = document.getElementById('admin-sidebar-close');
+
+    const openAdminSidebar = () => {
+      adminSidebar?.classList.add('active');
+      adminOverlay?.classList.add('active');
+    };
+
+    const closeAdminSidebar = () => {
+      adminSidebar?.classList.remove('active');
+      adminOverlay?.classList.remove('active');
+    };
+
+    if (adminToggle) adminToggle.onclick = openAdminSidebar;
+    if (adminClose) adminClose.onclick = closeAdminSidebar;
+    if (adminOverlay) adminOverlay.onclick = closeAdminSidebar;
+
+    // Close mobile admin sidebar when any link is clicked
+    document.querySelectorAll('.sidebar-link').forEach(link => {
+      link.addEventListener('click', closeAdminSidebar);
+    });
 
     document.getElementById('admin-logout-btn').onclick = async () => {
       await AuthService.logout();

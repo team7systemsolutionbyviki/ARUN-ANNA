@@ -324,7 +324,53 @@
 }
 
 /* ── Responsive Sidebar Adjustments ── */
+.admin-sidebar-toggle {
+  display: none;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.admin-sidebar-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.admin-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1150;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.admin-sidebar-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+#admin-sidebar-close {
+  display: none;
+}
+
 @media (max-width: 992px) {
+  .admin-sidebar-toggle {
+    display: inline-flex;
+  }
+  #admin-sidebar-close {
+    display: inline-flex;
+  }
   .sidebar {
     transform: translateX(-100%);
     z-index: 1200;
