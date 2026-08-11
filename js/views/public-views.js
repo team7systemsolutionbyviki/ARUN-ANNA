@@ -896,7 +896,7 @@ export const PublicViews = {
               <p style="font-size:0.875rem; color:var(--text-main); margin-top:0.35rem;">
                 Could not upload <b>${file.name}</b> to online storage. Please check your internet connection.
               </p>
-              <button class="btn btn-danger mt-2" onclick="document.getElementById('file-upload-input').click()">🔄 Select File & Retry Upload</button>
+              <button class="btn btn-danger mt-2" onclick="document.getElementById('file-input').click()">🔄 Select File & Retry Upload</button>
             </div>
           `;
           return;
@@ -1312,7 +1312,65 @@ export const PublicViews = {
 
         const originalText = btnSubmit.innerHTML;
         btnSubmit.disabled = true;
-        btnSubmit.innerHTML = '⏳ Submitting Order & Payment...';
+        btnSubmit.innerHTML = '⏳ Submitting...';
+
+        // Show Full-Screen Loading Overlay
+        let loadingOverlay = document.getElementById('order-submit-overlay');
+        if (!loadingOverlay) {
+          loadingOverlay = document.createElement('div');
+          loadingOverlay.id = 'order-submit-overlay';
+          document.body.appendChild(loadingOverlay);
+        }
+        loadingOverlay.style.cssText = `
+          position: fixed; inset: 0; z-index: 99999;
+          background: rgba(10, 10, 20, 0.88);
+          backdrop-filter: blur(10px);
+          display: flex; align-items: center; justify-content: center;
+          animation: fadeInOverlay 0.35s ease;
+        `;
+        // Inject keyframes if not already present
+        if (!document.getElementById('overlay-anim-style')) {
+          const style = document.createElement('style');
+          style.id = 'overlay-anim-style';
+          style.textContent = `
+            @keyframes fadeInOverlay { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes fadeOutOverlay { from { opacity: 1; } to { opacity: 0; } }
+            @keyframes spinRing { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            @keyframes popIn { 0% { transform: scale(0.5); opacity: 0; } 70% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+            @keyframes successPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); } 50% { box-shadow: 0 0 0 22px rgba(16,185,129,0); } }
+            @keyframes confettiFall {
+              0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+              100% { transform: translateY(120vh) rotate(720deg); opacity: 0; }
+            }
+          `;
+          document.head.appendChild(style);
+        }
+        loadingOverlay.innerHTML = `
+          <div style="text-align:center; padding:2.5rem; max-width:420px; width:90%;">
+            <div style="position:relative; width:90px; height:90px; margin:0 auto 1.75rem;">
+              <div style="position:absolute; inset:0; border-radius:50%; border:4px solid rgba(255,255,255,0.1);"></div>
+              <div style="position:absolute; inset:0; border-radius:50%; border:4px solid transparent; border-top-color:#3b82f6; border-right-color:#8b5cf6; animation: spinRing 1.1s linear infinite;"></div>
+              <div style="position:absolute; inset:10px; border-radius:50%; border:3px solid transparent; border-bottom-color:#10b981; animation: spinRing 0.75s linear infinite reverse;"></div>
+              <div style="position:absolute; inset:22px; border-radius:50%; background:linear-gradient(135deg,#3b82f6,#8b5cf6); display:flex; align-items:center; justify-content:center; font-size:1.35rem;">🖨️</div>
+            </div>
+            <h3 style="color:#fff; font-size:1.45rem; font-weight:800; margin-bottom:0.6rem; letter-spacing:-0.01em;">Submitting Your Order...</h3>
+            <p style="color:rgba(255,255,255,0.65); font-size:0.92rem; line-height:1.6; margin-bottom:1.5rem;">Processing payment details &amp; uploading your order to our system. Please wait...</p>
+            <div style="background:rgba(255,255,255,0.07); border-radius:12px; padding:0.85rem 1.25rem; border:1px solid rgba(255,255,255,0.12);">
+              <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.45rem;">
+                <span style="width:8px; height:8px; border-radius:50%; background:#3b82f6; display:inline-block; animation: spinRing 1s linear infinite;"></span>
+                <span style="color:rgba(255,255,255,0.75); font-size:0.82rem; font-weight:600;">Saving payment details</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.45rem;">
+                <span style="width:8px; height:8px; border-radius:50%; background:#8b5cf6; display:inline-block; animation: spinRing 1.3s linear infinite;"></span>
+                <span style="color:rgba(255,255,255,0.75); font-size:0.82rem; font-weight:600;">Syncing order to cloud database</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:0.6rem;">
+                <span style="width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block; animation: spinRing 0.9s linear infinite;"></span>
+                <span style="color:rgba(255,255,255,0.75); font-size:0.82rem; font-weight:600;">Sending confirmation notification</span>
+              </div>
+            </div>
+          </div>
+        `;
 
         try {
           let screenshotUrl = '';
@@ -1362,10 +1420,104 @@ export const PublicViews = {
             }
           });
 
+          // === SUCCESS SCREEN ===
+          // Spawn confetti particles
+          const confettiColors = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#06b6d4'];
+          for (let c = 0; c < 36; c++) {
+            const dot = document.createElement('div');
+            const size = 8 + Math.random() * 10;
+            dot.style.cssText = `
+              position: fixed;
+              left: ${10 + Math.random() * 80}vw;
+              top: -20px;
+              width: ${size}px;
+              height: ${size}px;
+              border-radius: ${Math.random() > 0.5 ? '50%' : '3px'};
+              background: ${confettiColors[Math.floor(Math.random() * confettiColors.length)]};
+              z-index: 100000;
+              pointer-events: none;
+              animation: confettiFall ${1.8 + Math.random() * 2}s ease-in ${Math.random() * 0.8}s forwards;
+            `;
+            document.body.appendChild(dot);
+            setTimeout(() => dot.remove(), 4500);
+          }
+
+          loadingOverlay.innerHTML = `
+            <div style="text-align:center; padding:2.5rem 2rem; max-width:460px; width:90%; animation: popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both;">
+              <div style="width:88px; height:88px; border-radius:50%; background:linear-gradient(135deg,#10b981,#059669); display:flex; align-items:center; justify-content:center; margin:0 auto 1.5rem; font-size:2.5rem; animation: successPulse 2s ease infinite, popIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both; box-shadow: 0 0 0 0 rgba(16,185,129,0.5);">
+                ✓
+              </div>
+              <h2 style="color:#fff; font-size:1.7rem; font-weight:900; margin-bottom:0.5rem; letter-spacing:-0.02em;">Order Placed Successfully! 🎉</h2>
+              <p style="color:rgba(255,255,255,0.7); font-size:0.95rem; margin-bottom:1.75rem; line-height:1.6;">Your order <strong style="color:#10b981;">${newOrder.id}</strong> has been submitted. We'll verify your payment and start printing shortly.</p>
+              <div style="background:rgba(16,185,129,0.12); border:1.5px solid rgba(16,185,129,0.35); border-radius:14px; padding:1rem 1.25rem; margin-bottom:1.5rem; text-align:left;">
+                <div style="display:flex; justify-content:space-between; font-size:0.875rem; margin-bottom:0.45rem;">
+                  <span style="color:rgba(255,255,255,0.55);">Order ID</span>
+                  <span style="color:#10b981; font-weight:800;">${newOrder.id}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.875rem; margin-bottom:0.45rem;">
+                  <span style="color:rgba(255,255,255,0.55);">Customer</span>
+                  <span style="color:#fff; font-weight:600;">${custName}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.875rem;">
+                  <span style="color:rgba(255,255,255,0.55);">Payment Status</span>
+                  <span style="background:#f59e0b; color:#000; font-size:0.75rem; font-weight:700; padding:0.15rem 0.55rem; border-radius:8px;">⏳ Waiting Verification</span>
+                </div>
+              </div>
+              <div style="display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
+                <button id="overlay-track-btn" style="background:linear-gradient(135deg,#3b82f6,#6366f1); color:#fff; border:none; border-radius:10px; padding:0.75rem 1.5rem; font-size:0.95rem; font-weight:700; cursor:pointer; box-shadow:0 4px 14px rgba(59,130,246,0.4); transition:transform 0.15s;">
+                  📦 Track My Order
+                </button>
+                <button id="overlay-close-btn" style="background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:10px; padding:0.75rem 1.25rem; font-size:0.95rem; font-weight:600; cursor:pointer; transition:transform 0.15s;">
+                  ✕ Close
+                </button>
+              </div>
+              <p style="color:rgba(255,255,255,0.35); font-size:0.78rem; margin-top:1.25rem;">Redirecting to tracking page in <span id="overlay-countdown">5</span>s...</p>
+            </div>
+          `;
+
+          // Countdown + auto-redirect
+          let countdown = 5;
+          const countdownEl = document.getElementById('overlay-countdown');
+          const countdownTimer = setInterval(() => {
+            countdown--;
+            if (countdownEl) countdownEl.textContent = countdown;
+            if (countdown <= 0) {
+              clearInterval(countdownTimer);
+              loadingOverlay.style.animation = 'fadeOutOverlay 0.35s ease forwards';
+              setTimeout(() => {
+                loadingOverlay.remove();
+                window.location.hash = `#track?id=${newOrder.id}`;
+              }, 350);
+            }
+          }, 1000);
+
+          document.getElementById('overlay-track-btn')?.addEventListener('click', () => {
+            clearInterval(countdownTimer);
+            loadingOverlay.style.animation = 'fadeOutOverlay 0.35s ease forwards';
+            setTimeout(() => {
+              loadingOverlay.remove();
+              window.location.hash = `#track?id=${newOrder.id}`;
+            }, 350);
+          });
+
+          document.getElementById('overlay-close-btn')?.addEventListener('click', () => {
+            clearInterval(countdownTimer);
+            loadingOverlay.style.animation = 'fadeOutOverlay 0.35s ease forwards';
+            setTimeout(() => {
+              loadingOverlay.remove();
+              window.location.hash = `#track?id=${newOrder.id}`;
+            }, 350);
+          });
+
           NotificationService.showToast(`Order ${newOrder.id} submitted successfully!`, 'success');
-          window.location.hash = `#track?id=${newOrder.id}`;
+
         } catch (err) {
           console.error('Order creation error:', err);
+          // Remove loading overlay on failure
+          if (loadingOverlay) {
+            loadingOverlay.style.animation = 'fadeOutOverlay 0.3s ease forwards';
+            setTimeout(() => loadingOverlay.remove(), 300);
+          }
           NotificationService.showToast('Failed to submit order. Please try again.', 'error');
           btnSubmit.disabled = false;
           btnSubmit.innerHTML = originalText;
@@ -1373,78 +1525,59 @@ export const PublicViews = {
       };
     }
 
+
     updateCalculations();
   },
 
   // --- TRACK ORDER PAGE ---
   async renderTrackOrder(queryStr = '') {
     const app = document.getElementById('app-content');
-    
-    // Safely parse order ID or query string
-    let paramId = '';
-    if (queryStr) {
-      const match = queryStr.match(/id=([^&]+)/);
-      paramId = match ? match[1] : queryStr.replace(/^#?track\??/, '').trim();
-    }
+    const paramId = new URLSearchParams(queryStr).get('id') || '';
 
     app.innerHTML = `
-      <section style="padding: 3.5rem 0;">
-        <div class="container" style="max-width:850px;">
+      <section style="padding: 4rem 0;">
+        <div class="container" style="max-width:800px;">
           <div class="text-center mb-4">
-            <h1 style="font-size:2.5rem; font-weight:800; color:var(--text-main);">${I18nService.t('track_title')}</h1>
-            <p class="text-muted" style="font-size:1rem; margin-top:0.35rem;">${I18nService.t('track_subtitle')}</p>
+            <h1 style="font-size:2.5rem;">${I18nService.t('track_title')}</h1>
+            <p class="text-muted">${I18nService.t('track_subtitle')}</p>
           </div>
 
           <!-- Search Box -->
-          <div class="glass-panel" style="padding:1.5rem; margin-bottom:2rem; border-radius:16px; border:1px solid var(--border-color); box-shadow:var(--shadow-md);">
-            <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
-              <input type="text" class="form-control" id="track-search-input" style="flex:1; min-width:260px; font-size:1rem; padding:0.75rem 1rem;" placeholder="Enter Order ID (e.g. ORD-2026-...) or Mobile Number..." value="${paramId}">
-              <button class="btn btn-primary" id="btn-perform-track" style="padding:0.75rem 1.75rem; font-weight:700;">🔍 ${I18nService.t('track_btn')}</button>
+          <div class="glass-panel" style="padding:1.5rem; margin-bottom:2rem;">
+            <div style="display:flex; gap:0.75rem;">
+              <input type="text" class="form-control" id="track-search-input" placeholder="${I18nService.t('track_order_id')} / ${I18nService.t('track_phone')}..." value="${paramId}">
+              <button class="btn btn-primary" id="btn-perform-track">${I18nService.t('track_btn')}</button>
             </div>
-          </div>
-
-          <!-- Live Status Indicator -->
-          <div id="track-live-sync-indicator" style="display:none; text-align:right; margin-bottom:1rem;">
-            <span style="font-size:0.75rem; background:rgba(16,185,129,0.15); color:#059669; font-weight:700; padding:0.25rem 0.65rem; border-radius:14px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.4rem;">
-              <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%; animation: pulse 1.5s infinite;"></span>
-              Live Sync Active
-            </span>
           </div>
 
           <!-- Search Results Container -->
-          <div id="track-results-container">
-            <div class="text-center text-muted" style="padding:2rem;">
-              <div style="font-size:2.5rem; margin-bottom:0.5rem; animation: spin 2s linear infinite;">⚙️</div>
-              Fetching live order status from Cloud Database...
-            </div>
-          </div>
+          <div id="track-results-container"></div>
         </div>
       </section>
     `;
 
     const renderOrderTrackCard = (order) => {
-      const isCompleted = order.status === 'Completed' || order.orderStatus === 'Completed';
-      const isReady = order.status === 'Ready for Pickup' || order.orderStatus === 'Ready for Pickup';
-      const isPrinting = order.status === 'Printing' || order.orderStatus === 'Printing';
-      const isApproved = order.status === 'Payment Approved' || order.orderStatus === 'Payment Approved';
-      const currentStatus = order.status || order.orderStatus || 'Waiting Verification';
+      const isCompleted = order.status === 'Completed';
+      const isReady = order.status === 'Ready for Pickup';
+      const isPrinting = order.status === 'Printing';
+      const isApproved = order.status === 'Payment Approved';
 
       return `
-      <div class="glass-panel" style="padding:2rem; margin-bottom:1.5rem; border-left: 6px solid ${isCompleted ? '#10b981' : isReady ? '#3b82f6' : 'var(--primary)'}; border-radius:16px; box-shadow:var(--shadow-md);" class="animate-fade-in">
+      <div class="glass-panel" style="padding:2rem; margin-bottom:1.5rem; border-left: 5px solid ${isCompleted ? '#10b981' : isReady ? '#3b82f6' : 'var(--primary)'}; shadow: var(--shadow-md);">
         
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom:1rem; margin-bottom:1.25rem; flex-wrap:wrap; gap:0.75rem;">
           <div>
             <div style="display:flex; align-items:center; gap:0.6rem;">
-              <h3 style="color:var(--primary); font-size:1.45rem; font-weight:800; margin:0;">${order.id || order.orderId}</h3>
+              <h3 style="color:var(--primary); font-size:1.4rem; margin:0;">${order.id}</h3>
               <span style="font-size:0.72rem; background:rgba(16,185,129,0.15); color:#059669; font-weight:700; padding:0.2rem 0.55rem; border-radius:12px; border:1px solid rgba(16,185,129,0.3); display:inline-flex; align-items:center; gap:0.3rem;">
                 <span style="display:inline-block; width:7px; height:7px; background:#10b981; border-radius:50%;"></span>
-                Live Order
+                Live Sync Active
               </span>
             </div>
             <p class="text-muted" style="font-size:0.85rem; margin-top:0.25rem;">Placed on: ${formatDate(order.createdAt)} at ${formatTime(order.createdAt)}</p>
           </div>
           <div>
-            ${getStatusBadgeHTML(currentStatus)}
+            ${getStatusBadgeHTML(order.status)}
           </div>
         </div>
 
@@ -1452,7 +1585,7 @@ export const PublicViews = {
         <div style="margin:1.5rem 0;">
           <h4 style="font-size:0.85rem; font-weight:700; color:var(--text-muted); margin-bottom:0.85rem; text-transform:uppercase; letter-spacing:0.5px;">Order Progression Timeline:</h4>
           <div class="timeline">
-            <div class="timeline-item ${currentStatus !== 'Pending Payment' ? 'completed' : 'active'}">
+            <div class="timeline-item ${order.status !== 'Pending Payment' ? 'completed' : 'active'}">
               <div class="timeline-icon">✓</div>
               <div class="timeline-content">
                 <div style="font-weight:700;">Order Received & Verified</div>
@@ -1460,15 +1593,15 @@ export const PublicViews = {
               </div>
             </div>
 
-            <div class="timeline-item ${['Payment Approved', 'Printing', 'Ready for Pickup', 'Completed'].includes(currentStatus) ? 'completed' : isApproved || isPrinting ? 'active' : ''}">
+            <div class="timeline-item ${['Payment Approved', 'Printing', 'Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : isApproved || isPrinting ? 'active' : ''}">
               <div class="timeline-icon">${isPrinting ? '🖨️' : '💳'}</div>
               <div class="timeline-content">
-                <div style="font-weight:700;">Payment Approved & Printing</div>
+                <div style="font-weight:700;">Payment Approved & Document Printing</div>
                 <div style="font-size:0.8rem; color:var(--text-muted);">${isPrinting ? '🖨️ Currently printing your document packages...' : 'Payment verified by shop desk'}</div>
               </div>
             </div>
 
-            <div class="timeline-item ${['Ready for Pickup', 'Completed'].includes(currentStatus) ? 'completed' : ''}">
+            <div class="timeline-item ${['Ready for Pickup', 'Completed'].includes(order.status) ? 'completed' : ''}">
               <div class="timeline-icon">📦</div>
               <div class="timeline-content">
                 <div style="font-weight:700;">${(order.pricing?.deliveryFee && order.pricing.deliveryFee > 0) ? 'Out for Delivery' : 'Ready for Store Pickup'}</div>
@@ -1479,7 +1612,7 @@ export const PublicViews = {
         </div>
 
         <!-- Summary info -->
-        <div style="background:var(--bg-card); padding:1rem 1.25rem; border-radius:12px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
+        <div style="background:var(--bg-card); padding:1rem 1.25rem; border-radius:10px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem;">
           <div>
             <span style="font-size:0.85rem; color:var(--text-muted);">Customer:</span> <b>${order.customerName || 'Customer'}</b> (${order.customerPhone || 'N/A'})
             <div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">
@@ -1488,7 +1621,7 @@ export const PublicViews = {
           </div>
           <div style="text-align:right;">
             <span style="font-size:0.85rem; color:var(--text-muted);">Grand Total:</span>
-            <div style="font-size:1.35rem; font-weight:800; color:var(--primary);">${formatCurrency(order.pricing?.total || order.totalAmount || 0)}</div>
+            <div style="font-size:1.35rem; font-weight:800; color:var(--primary);">${formatCurrency(order.pricing?.total)}</div>
           </div>
         </div>
       </div>
@@ -1498,77 +1631,51 @@ export const PublicViews = {
     const searchAction = async (isSilentUpdate = false) => {
       const val = document.getElementById('track-search-input')?.value.trim();
       const container = document.getElementById('track-results-container');
-      const syncIndicator = document.getElementById('track-live-sync-indicator');
       if (!container) return;
 
-      let results = [];
-
       if (!val) {
-        // If search input is empty, auto-fetch recent orders for convenience
-        const allOrders = await DBService.getOrders();
-        results = allOrders.slice(0, 3); // top 3 recent orders
-        if (results.length === 0) {
-          if (!isSilentUpdate) {
-            container.innerHTML = `
-              <div class="glass-panel text-center" style="padding:2.5rem; border-radius:16px;">
-                <div style="font-size:3rem; margin-bottom:0.5rem;">📑</div>
-                <h3>No Orders Found</h3>
-                <p class="text-muted" style="margin-top:0.35rem;">Please enter your Order ID or Mobile Number above to check order status.</p>
-              </div>
-            `;
-          }
-          if (syncIndicator) syncIndicator.style.display = 'none';
-          return;
-        }
-      } else {
-        results = await DBService.searchOrders(val);
-      }
-
-      if (results.length === 0) {
         if (!isSilentUpdate) {
-          container.innerHTML = `
-            <div class="glass-panel text-center" style="padding:2.5rem; border-radius:16px;">
-              <div style="font-size:3rem; margin-bottom:0.5rem;">🔍</div>
-              <h3>No matching order found</h3>
-              <p class="text-muted" style="margin-top:0.35rem;">We couldn't find any order matching "<b>${val}</b>". Please check your Order ID or Phone number.</p>
-            </div>
-          `;
+          container.innerHTML = `<div class="text-center text-muted">Please enter an Order ID or Mobile Number above.</div>`;
         }
-        if (syncIndicator) syncIndicator.style.display = 'none';
         return;
       }
 
-      if (syncIndicator) syncIndicator.style.display = 'block';
+      const results = await DBService.searchOrders(val);
+      if (results.length === 0) {
+        if (!isSilentUpdate) {
+          container.innerHTML = `
+            <div class="glass-panel text-center" style="padding:2.5rem;">
+              <div style="font-size:3rem;">🔍</div>
+              <h3>No orders found</h3>
+              <p class="text-muted" style="margin-top:0.5rem;">We couldn't find any order matching "${val}". Please check the ID or Phone number.</p>
+            </div>
+          `;
+        }
+        return;
+      }
 
-      // Track status changes live
+      // Check if status changed compared to previous render
+      let statusChanged = false;
       results.forEach(freshOrder => {
-        const orderIdKey = freshOrder.id || freshOrder.orderId;
-        const currentStatus = freshOrder.status || freshOrder.orderStatus;
-        const lastStatus = window._lastTrackedStatuses ? window._lastTrackedStatuses[orderIdKey] : null;
-        if (lastStatus && lastStatus !== currentStatus) {
-          NotificationService.showToast(`🔔 Live Update: Order ${orderIdKey} is now '${currentStatus}'!`, 'success');
+        const lastStatus = window._lastTrackedStatuses ? window._lastTrackedStatuses[freshOrder.id] : null;
+        if (lastStatus && lastStatus !== freshOrder.status) {
+          statusChanged = true;
+          NotificationService.showToast(`🔔 Status Update: Order ${freshOrder.id} is now '${freshOrder.status}'!`, 'success');
         }
         if (!window._lastTrackedStatuses) window._lastTrackedStatuses = {};
-        window._lastTrackedStatuses[orderIdKey] = currentStatus;
+        window._lastTrackedStatuses[freshOrder.id] = freshOrder.status;
       });
 
-      container.innerHTML = results.map(order => renderOrderTrackCard(order)).join('');
+      if (!isSilentUpdate || statusChanged || !container.innerHTML.includes(results[0].id)) {
+        container.innerHTML = results.map(order => renderOrderTrackCard(order)).join('');
+      }
     };
 
     const searchBtn = document.getElementById('btn-perform-track');
     if (searchBtn) searchBtn.onclick = () => searchAction(false);
+    if (paramId) searchAction(false);
 
-    const searchInput = document.getElementById('track-search-input');
-    if (searchInput) {
-      searchInput.onkeyup = (e) => {
-        if (e.key === 'Enter') searchAction(false);
-      };
-    }
-
-    // Run initial search
-    searchAction(false);
-
-    // Live 3-second auto-sync polling
+    // --- LIVE REFRESH SYNC TIMER FOR TRACK ORDER PAGE (3-second Polling) ---
     if (window._trackOrderSyncTimer) {
       clearInterval(window._trackOrderSyncTimer);
     }

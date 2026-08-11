@@ -14,24 +14,6 @@ import { formatCurrency, getStatusBadgeHTML, formatDate, formatTime } from '../u
 import { exportToCSV } from '../utils/export-excel.js';
 
 export const AdminViews = {
-  // Audio Notification Synthesizer for New Incoming Order Alert
-  playNewOrderSound() {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 note
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5 note
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.45);
-    } catch (e) {}
-  },
-
   // --- ADMIN LOGIN PAGE ---
   renderLogin() {
     const app = document.getElementById('app-content');
@@ -78,7 +60,7 @@ export const AdminViews = {
   // Helper Layout Wrapper for Admin Portal
   async renderAdminLayout(activeTab, contentHTML) {
     const user = AuthService.getCurrentUser();
-    const settings = await DBService.getSettings();
+    const settings = await DBService.getSettings(); // uses in-memory cache — instant
     const brandLogoText = (settings.shopName || 'SHOP').slice(0, 2).toUpperCase();
     const brandName = settings.shopName || 'Admin Portal';
     const app = document.getElementById('app-content');
@@ -152,7 +134,7 @@ export const AdminViews = {
 
   // --- OVERVIEW DASHBOARD ---
   async renderDashboard() {
-    const orders = await DBService.getOrders();
+    const orders = await DBService.getOrders(); // uses in-memory cache — instant
 
     // Metrics Calculations (Excludes Rejected orders from Net Revenue / Gain Amount)
     const validOrders = orders.filter(o => o.status !== 'Rejected');
@@ -281,33 +263,15 @@ export const AdminViews = {
       ChartsEngine.renderRevenueLineChart('chart-revenue-container');
       ChartsEngine.renderBarChart('chart-services-container');
     }, 100);
-
-    // Live Dashboard Refresh Timer (2.5s Polling)
-    if (window._adminDashboardSyncTimer) {
-      clearInterval(window._adminDashboardSyncTimer);
-    }
-    window._adminDashboardSyncTimer = setInterval(async () => {
-      if (!window.location.hash.startsWith('#admin-dashboard') && window.location.hash !== '#admin') {
-        clearInterval(window._adminDashboardSyncTimer);
-        window._adminDashboardSyncTimer = null;
-        return;
-      }
-      try {
-        const freshOrders = await DBService.getOrders();
-        const freshFingerprint = freshOrders.map(o => `${o.id}_${o.status}`).join('|');
-        if (window._lastDashboardFingerprint && freshFingerprint !== window._lastDashboardFingerprint) {
-          window._lastDashboardFingerprint = freshFingerprint;
-          this.renderDashboard();
-        }
-        window._lastDashboardFingerprint = freshFingerprint;
-      } catch (e) {}
-    }, 2500);
   },
 
   // --- ORDERS MANAGEMENT PIPELINE ---
   async renderOrders(queryStr = '') {
-    const orders = await DBService.getOrders();
-    const settings = await DBService.getSettings();
+    // Load in parallel — both hit in-memory cache after first load
+    const [orders, settings] = await Promise.all([
+      DBService.getOrders(),
+      DBService.getSettings()
+    ]);
 
     const paramId = new URLSearchParams(queryStr).get('id') || '';
 
@@ -550,13 +514,12 @@ export const AdminViews = {
 
     await this.renderAdminLayout('orders', html);
 
-    // Fast Real-Time Live Sync Engine (2.5s Polling + Audio Chime Alert)
+    // Live Order Reception Polling Timer (Every 6 seconds — new orders only)
     if (window._adminOrderSyncTimer) {
       clearInterval(window._adminOrderSyncTimer);
     }
     if (!window._deletedOrderIds) window._deletedOrderIds = new Set();
     window._knownOrderIds = new Set(orders.map(o => o.id));
-    window._lastOrderFingerprint = orders.map(o => `${o.id}_${o.status}`).join('|');
 
     window._adminOrderSyncTimer = setInterval(async () => {
       if (!window.location.hash.startsWith('#admin-orders')) {
@@ -566,26 +529,17 @@ export const AdminViews = {
       }
       try {
         const freshOrders = await DBService.getOrders();
-        const freshFingerprint = freshOrders.map(o => `${o.id}_${o.status}`).join('|');
-
-        // Check for genuinely NEW incoming order
+        // Only re-render if there is a genuinely NEW order id (not a deletion)
         const genuinelyNew = freshOrders.filter(o =>
           !window._knownOrderIds.has(o.id) && !window._deletedOrderIds.has(o.id)
         );
-
         if (genuinelyNew.length > 0) {
           window._knownOrderIds = new Set(freshOrders.map(o => o.id));
-          window._lastOrderFingerprint = freshFingerprint;
-          this.playNewOrderSound();
-          NotificationService.showToast(`🔔 NEW ORDER RECEIVED: ${genuinelyNew[0].id} from ${genuinelyNew[0].customerName || 'Customer'}!`, 'success');
-          this.renderOrders(queryStr);
-        } else if (freshFingerprint !== window._lastOrderFingerprint) {
-          // Status update occurred
-          window._lastOrderFingerprint = freshFingerprint;
+          NotificationService.showToast(`🔔 NEW ORDER: ${genuinelyNew[0].id} (${genuinelyNew[0].customerName})!`, 'success');
           this.renderOrders(queryStr);
         }
       } catch (e) {}
-    }, 2500);
+    }, 6000);
 
     // Global Order Action Helpers
     window.deleteOrderRecord = (orderId) => {
@@ -989,8 +943,10 @@ export const AdminViews = {
     };
 
     window.sendWhatsAppInvoice = async (orderId) => {
-      const order = await DBService.getOrderById(orderId);
-      const settings = await DBService.getSettings();
+      const [order, settings] = await Promise.all([
+        DBService.getOrderById(orderId),
+        DBService.getSettings()
+      ]);
       if (!order) {
         NotificationService.showToast('Order not found', 'error');
         return;
@@ -1112,7 +1068,9 @@ Thank you for choosing ${settings.shopName}!
 
   // --- PRICING & PRODUCTS MANAGEMENT EDITOR (FULL CRUD) ---
   async renderPricing() {
-    const pricing = PricingEngine.getPricingData();
+    // Load pricing from Firebase, update PricingEngine in-memory cache
+    const pricing = await DBService.getPricing();
+    await PricingEngine.preload(DBService);
 
     const html = `
       <div class="table-card mb-4">
@@ -1343,7 +1301,7 @@ Thank you for choosing ${settings.shopName}!
         }
       });
 
-      PricingEngine.savePricingData(pricing);
+      PricingEngine.savePricingData(pricing, DBService);
       NotificationService.showToast('All pricing structure & delivery fees saved successfully!', 'success');
     };
 
@@ -1388,7 +1346,7 @@ Thank you for choosing ${settings.shopName}!
 
       if (!pricing.paperSizes) pricing.paperSizes = {};
       pricing.paperSizes[name] = { baseRate, label };
-      PricingEngine.savePricingData(pricing);
+      PricingEngine.savePricingData(pricing, DBService);
       if (window.ModalComponent) window.ModalComponent.close();
       NotificationService.showToast(`Paper Size "${name}" added successfully!`, 'success');
       this.renderPricing();
@@ -1397,7 +1355,7 @@ Thank you for choosing ${settings.shopName}!
     window.deletePaperSize = (sizeKey) => {
       if (confirm(`🗑️ Delete Paper Size "${sizeKey}"? Customers will no longer be able to select this size.`)) {
         delete pricing.paperSizes[sizeKey];
-        PricingEngine.savePricingData(pricing);
+        PricingEngine.savePricingData(pricing, DBService);
         NotificationService.showToast(`Paper Size "${sizeKey}" deleted.`, 'info');
         this.renderPricing();
       }
@@ -1444,7 +1402,7 @@ Thank you for choosing ${settings.shopName}!
 
       if (!pricing.paperQualities) pricing.paperQualities = {};
       pricing.paperQualities[name] = { multiplier, label };
-      PricingEngine.savePricingData(pricing);
+      PricingEngine.savePricingData(pricing, DBService);
       if (window.ModalComponent) window.ModalComponent.close();
       NotificationService.showToast(`Paper Quality "${name}" added!`, 'success');
       this.renderPricing();
@@ -1453,7 +1411,7 @@ Thank you for choosing ${settings.shopName}!
     window.deletePaperQuality = (qualityKey) => {
       if (confirm(`🗑️ Delete Paper Quality "${qualityKey}"?`)) {
         delete pricing.paperQualities[qualityKey];
-        PricingEngine.savePricingData(pricing);
+        PricingEngine.savePricingData(pricing, DBService);
         NotificationService.showToast(`Paper Quality "${qualityKey}" deleted.`, 'info');
         this.renderPricing();
       }
@@ -1506,7 +1464,7 @@ Thank you for choosing ${settings.shopName}!
       }
 
       pricing.bindings[name] = { price, description, label: description };
-      PricingEngine.savePricingData(pricing);
+      PricingEngine.savePricingData(pricing, DBService);
       if (window.ModalComponent) window.ModalComponent.close();
       NotificationService.showToast(`Binding Option "${name}" updated successfully!`, 'success');
       this.renderPricing();
@@ -1515,7 +1473,7 @@ Thank you for choosing ${settings.shopName}!
     window.deleteBinding = (bindingKey) => {
       if (confirm(`🗑️ Delete Binding Option "${bindingKey}"?`)) {
         delete pricing.bindings[bindingKey];
-        PricingEngine.savePricingData(pricing);
+        PricingEngine.savePricingData(pricing, DBService);
         NotificationService.showToast(`Binding Option "${bindingKey}" deleted.`, 'info');
         this.renderPricing();
       }
@@ -1562,7 +1520,7 @@ Thank you for choosing ${settings.shopName}!
 
       if (!pricing.lamination) pricing.lamination = {};
       pricing.lamination[name] = { pricePerPage, label };
-      PricingEngine.savePricingData(pricing);
+      PricingEngine.savePricingData(pricing, DBService);
       if (window.ModalComponent) window.ModalComponent.close();
       NotificationService.showToast(`Finishing Option "${name}" added!`, 'success');
       this.renderPricing();
@@ -1576,7 +1534,7 @@ Thank you for choosing ${settings.shopName}!
       if (confirm(`🗑️ Delete Finishing Option "${finishingKey}"?`)) {
         if (pricing.lamination && pricing.lamination[finishingKey]) {
           delete pricing.lamination[finishingKey];
-          PricingEngine.savePricingData(pricing);
+          PricingEngine.savePricingData(pricing, DBService);
           NotificationService.showToast(`Finishing Option "${finishingKey}" deleted.`, 'info');
           this.renderPricing();
         }
@@ -1630,7 +1588,7 @@ Thank you for choosing ${settings.shopName}!
 
       if (!pricing.deliveryZones) pricing.deliveryZones = {};
       pricing.deliveryZones[zoneName] = { fee, label };
-      PricingEngine.savePricingData(pricing);
+      PricingEngine.savePricingData(pricing, DBService);
 
       if (window.ModalComponent) window.ModalComponent.close();
       NotificationService.showToast(`Delivery Zone "${zoneName}" added!`, 'success');
@@ -1645,7 +1603,7 @@ Thank you for choosing ${settings.shopName}!
       if (confirm(`Are you sure you want to delete delivery zone "${zoneName}"?`)) {
         if (pricing.deliveryZones && pricing.deliveryZones[zoneName]) {
           delete pricing.deliveryZones[zoneName];
-          PricingEngine.savePricingData(pricing);
+          PricingEngine.savePricingData(pricing, DBService);
           NotificationService.showToast(`Delivery Zone "${zoneName}" deleted!`, 'info');
           this.renderPricing();
         }

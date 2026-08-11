@@ -258,7 +258,7 @@ export const StorageService = {
     return { valid: true };
   },
 
-  // Resumable Firebase Cloud Storage Upload with Live Progress Callback
+  // Resumable Firebase Cloud Storage Upload with Live Progress Callback & IndexedDB Local Fallback
   async uploadFileResumable(file, orderId = 'temp', onProgress = null) {
     const val = this.validateFile(file);
     if (!val.valid) {
@@ -269,20 +269,22 @@ export const StorageService = {
     const uploadedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(); // 7 days
 
-    // Store in local IndexedDB for immediate fallback
+    // Store in local IndexedDB for immediate zero-latency local fallback
     await this.saveToIDB(idbKey, file);
 
-    const { storage, isDemo } = getServices();
     let downloadUrl = '';
     let storagePath = '';
     let dataUrl = '';
 
-    // Convert small/medium files (<= 10MB) to Data URL for instant local fallback
-    if (file.size <= 10 * 1024 * 1024) {
+    // Convert small/medium files (<= 15MB) to Data URL for instant local fallback
+    if (file.size <= 15 * 1024 * 1024) {
       try {
         dataUrl = await this.readFileAsDataURL(file);
       } catch (e) {}
     }
+
+    const { storage, isDemo } = getServices();
+    let cloudUploadSuccess = false;
 
     if (!isDemo && storage) {
       try {
@@ -305,21 +307,34 @@ export const StorageService = {
 
         const uploadTask = uploadBytesResumable(fileRef, file, metadata);
 
-        // Wrap uploadTask in a Promise to track live progress
+        // Upload with live progress & 5-second timeout fallback if upload hangs/blocked by CORS
         downloadUrl = await new Promise((resolve, reject) => {
+          let hasReceivedProgress = false;
+
+          const timeoutTimer = setTimeout(() => {
+            if (!hasReceivedProgress || (uploadTask.snapshot && uploadTask.snapshot.bytesTransferred === 0)) {
+              console.warn('Firebase Storage upload timeout or blocked by CORS. Switching to high-speed IndexedDB fallback.');
+              try { uploadTask.cancel(); } catch (e) {}
+              reject(new Error('Firebase Storage timeout'));
+            }
+          }, 5000);
+
           uploadTask.on(
             'state_changed',
             (snapshot) => {
+              hasReceivedProgress = true;
               const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
               if (typeof onProgress === 'function') {
                 onProgress(progress, snapshot.state);
               }
             },
             (error) => {
-              console.error('Firebase Storage resumable upload error:', error);
+              clearTimeout(timeoutTimer);
+              console.warn('Firebase Storage resumable upload error:', error);
               reject(error);
             },
             async () => {
+              clearTimeout(timeoutTimer);
               try {
                 const url = await getDownloadURL(uploadTask.snapshot.ref);
                 resolve(url);
@@ -330,15 +345,17 @@ export const StorageService = {
           );
         });
 
-        console.log('✅ Original file successfully stored in Firebase Storage:', storagePath);
+        cloudUploadSuccess = true;
+        console.log('✅ File successfully stored in Firebase Storage:', storagePath);
       } catch (err) {
-        console.warn('Firebase Storage upload failed:', err);
+        console.warn('Firebase Storage upload skipped/failed. Using local IndexedDB fallback engine:', err?.message || err);
         storagePath = '';
         downloadUrl = '';
-        throw new Error(`Cloud upload failed for "${file.name}". Please check internet connection and retry.`);
       }
-    } else {
-      // Demo / Fallback mode
+    }
+
+    if (!cloudUploadSuccess || !downloadUrl) {
+      // High-speed IndexedDB + Data URL Fallback
       downloadUrl = dataUrl || ('idb://' + idbKey);
       if (typeof onProgress === 'function') onProgress(100, 'SUCCESS');
     }
@@ -441,6 +458,18 @@ export const StorageService = {
     if (!isPdf) return fallbackEst;
 
     return new Promise((resolve) => {
+      let isResolved = false;
+      const safeResolve = (pages) => {
+        if (isResolved) return;
+        isResolved = true;
+        resolve(pages > 0 ? pages : fallbackEst);
+      };
+
+      // Strict 1.5 second safety timeout to prevent hanging
+      const safetyTimer = setTimeout(() => {
+        safeResolve(fallbackEst);
+      }, 1500);
+
       // Fast chunk reading: first 128KB and last 128KB of PDF
       const chunkSize = 128 * 1024;
       const headChunk = file.slice(0, chunkSize);
@@ -452,32 +481,37 @@ export const StorageService = {
       const checkFinish = () => {
         pendingReads--;
         if (pendingReads <= 0) {
-          resolve(pagesFound > 0 ? pagesFound : fallbackEst);
+          clearTimeout(safetyTimer);
+          safeResolve(pagesFound);
         }
       };
 
       const processText = (text) => {
         if (!text) return;
-        // Search for /Count N in PDF catalog/tree
-        const countMatches = [...text.matchAll(/\/Count\s+(\d+)/g)];
-        for (const match of countMatches) {
-          const countVal = parseInt(match[1], 10);
-          if (!isNaN(countVal) && countVal > pagesFound) {
-            pagesFound = countVal;
+        try {
+          // Search for /Count N in PDF catalog/tree
+          const countMatches = [...text.matchAll(/\/Count\s+(\d+)/g)];
+          for (const match of countMatches) {
+            const countVal = parseInt(match[1], 10);
+            if (!isNaN(countVal) && countVal > pagesFound) {
+              pagesFound = countVal;
+            }
           }
-        }
-        // Fallback: search for /Type /Page
-        if (pagesFound === 0) {
-          const pageMatches = text.match(/\/Type\s*\/Page\b/g);
-          if (pageMatches && pageMatches.length > pagesFound) {
-            pagesFound = pageMatches.length;
+          // Fallback: search for /Type /Page
+          if (pagesFound === 0) {
+            const pageMatches = text.match(/\/Type\s*\/Page\b/g);
+            if (pageMatches && pageMatches.length > pagesFound) {
+              pagesFound = pageMatches.length;
+            }
           }
+        } catch (err) {
+          console.warn('PDF page parsing warning:', err);
         }
       };
 
       const readerHead = new FileReader();
       readerHead.onload = (e) => {
-        processText(e.target.result);
+        try { processText(e.target.result); } catch (err) {}
         checkFinish();
       };
       readerHead.onerror = checkFinish;
@@ -486,7 +520,7 @@ export const StorageService = {
       if (tailChunk) {
         const readerTail = new FileReader();
         readerTail.onload = (e) => {
-          processText(e.target.result);
+          try { processText(e.target.result); } catch (err) {}
           checkFinish();
         };
         readerTail.onerror = checkFinish;

@@ -184,5 +184,89 @@ export const NavbarComponent = {
         }
       });
     }
+
+    // ── Mobile Hamburger Drawer ───────────────────────────────────────────────
+    const mobileToggle = document.getElementById('mobile-nav-toggle');
+
+    // Remove any pre-existing drawer (page re-render safety)
+    const existingDrawer = document.getElementById('mobile-nav-drawer');
+    const existingOverlay = document.getElementById('mobile-nav-overlay');
+    if (existingDrawer) existingDrawer.remove();
+    if (existingOverlay) existingOverlay.remove();
+
+    // Build drawer HTML
+    const drawerOverlay = document.createElement('div');
+    drawerOverlay.id = 'mobile-nav-overlay';
+    drawerOverlay.className = 'mobile-nav-overlay';
+
+    const drawer = document.createElement('div');
+    drawer.id = 'mobile-nav-drawer';
+    drawer.className = 'mobile-nav-drawer';
+    drawer.innerHTML = `
+      <div class="mobile-drawer-header">
+        <a href="#home" class="nav-brand" style="font-size:1.1rem;">
+          <div class="nav-brand-logo" style="width:34px; height:34px; font-size:1rem;">${brandLogoText}</div>
+          <span>${brandName}</span>
+        </a>
+        <button id="mobile-drawer-close" style="background:transparent; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted); padding:0.25rem;">✕</button>
+      </div>
+      <div class="mobile-drawer-links">
+        <a href="#home"         class="mobile-drawer-link">🏠 ${I18nService.t('nav_home')}</a>
+        <a href="#services"     class="mobile-drawer-link">🖨️ ${I18nService.t('nav_services')}</a>
+        <a href="#pricing"      class="mobile-drawer-link">💰 ${I18nService.t('nav_pricing')}</a>
+        <a href="#how-it-works" class="mobile-drawer-link">📋 ${I18nService.t('nav_how_it_works')}</a>
+        <a href="#order"        class="mobile-drawer-link">📄 ${I18nService.t('nav_order')}</a>
+        <a href="#track"        class="mobile-drawer-link">🔍 ${I18nService.t('nav_track')}</a>
+        <a href="#faq"          class="mobile-drawer-link">❓ ${I18nService.t('nav_faq')}</a>
+        <a href="#contact"      class="mobile-drawer-link">📞 ${I18nService.t('nav_contact')}</a>
+        <a href="#order" class="btn btn-primary" style="margin:0.75rem 0; justify-content:center; min-height:48px;">
+          🖨️ ${I18nService.t('nav_print_now')}
+        </a>
+      </div>
+      <div class="mobile-drawer-footer">
+        <span style="font-size:0.82rem; color:var(--text-muted); font-weight:600;">Theme:</span>
+        <button id="mobile-theme-toggle" style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); padding:0.35rem 0.75rem; cursor:pointer; font-size:0.9rem; color:var(--text-main);">
+          ${currentTheme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+        </button>
+      </div>
+    `;
+
+    document.body.appendChild(drawerOverlay);
+    document.body.appendChild(drawer);
+
+    const openDrawer = () => {
+      drawer.classList.add('open');
+      drawerOverlay.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    };
+
+    const closeDrawer = () => {
+      drawer.classList.remove('open');
+      drawerOverlay.classList.remove('active');
+      document.body.style.overflow = '';
+    };
+
+    if (mobileToggle) mobileToggle.onclick = openDrawer;
+    drawerOverlay.onclick = closeDrawer;
+    document.getElementById('mobile-drawer-close')?.addEventListener('click', closeDrawer);
+
+    // Close drawer on any link tap
+    drawer.querySelectorAll('.mobile-drawer-link, .btn').forEach(link => {
+      link.addEventListener('click', closeDrawer);
+    });
+
+    // Theme toggle inside drawer
+    const mobileThemeToggle = document.getElementById('mobile-theme-toggle');
+    if (mobileThemeToggle) {
+      mobileThemeToggle.onclick = () => {
+        const active = document.documentElement.getAttribute('data-theme');
+        const next = active === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('team7_theme', next);
+        mobileThemeToggle.innerHTML = next === 'dark' ? '☀️ Light' : '🌙 Dark';
+        const desktopThemeBtn = document.getElementById('theme-toggle-btn');
+        if (desktopThemeBtn) desktopThemeBtn.innerHTML = next === 'dark' ? '☀️' : '🌙';
+      };
+    }
   }
 };

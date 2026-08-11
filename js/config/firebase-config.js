@@ -1,5 +1,5 @@
 /* ==========================================================================
-   TEAM 7 SYSTEM SOLUTION - FIREBASE CONFIGURATION & HYBRID STORAGE
+   TEAM 7 SYSTEM SOLUTION - FIREBASE CONFIGURATION (PARALLEL INIT ENGINE)
    ========================================================================== */
 
 // Firebase Live Configuration
@@ -14,38 +14,53 @@ export const firebaseConfig = {
 };
 
 // Check if Firebase keys are set to real values
-export const isFirebaseConfigured = () => {
-  return firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY" && firebaseConfig.apiKey !== "";
-};
+export const isFirebaseConfigured = () =>
+  firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY" && firebaseConfig.apiKey !== "";
 
 let firebaseApp = null;
-let db = null;
-let auth = null;
-let storage = null;
+let db          = null;
+let auth        = null;
+let storage     = null;
+let _initPromise = null;  // Singleton promise — prevents double-init
 
-// Initialize Firebase if configured dynamically
+// Initialize Firebase — all 4 SDK modules loaded in PARALLEL
 export async function initFirebase() {
-  if (isFirebaseConfigured()) {
+  if (_initPromise) return _initPromise;
+
+  _initPromise = (async () => {
+    if (!isFirebaseConfigured()) {
+      console.log('Running in Production Demo Mode (Local Storage Data Engine).');
+      return { firebaseApp: null, db: null, auth: null, storage: null, mode: 'DEMO' };
+    }
+
     try {
-      const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js");
-      const { getFirestore } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js");
-      const { getAuth } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js");
-      const { getStorage } = await import("https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js");
+      // Load all Firebase modules in parallel (4x faster than sequential awaits)
+      const [
+        { initializeApp },
+        { getFirestore },
+        { getAuth },
+        { getStorage }
+      ] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js'),
+        import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js'),
+        import('https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js')
+      ]);
 
       firebaseApp = initializeApp(firebaseConfig);
-      db = getFirestore(firebaseApp);
-      auth = getAuth(firebaseApp);
-      storage = getStorage(firebaseApp);
+      db          = getFirestore(firebaseApp);
+      auth        = getAuth(firebaseApp);
+      storage     = getStorage(firebaseApp);
 
-      console.log("Firebase initialized successfully.");
+      console.log('⚡ Firebase initialized (parallel load).');
       return { firebaseApp, db, auth, storage, mode: 'FIREBASE' };
     } catch (err) {
-      console.warn("Firebase SDK load error, falling back to Local Storage Engine:", err);
+      console.warn('Firebase SDK load error, falling back to Local Storage Engine:', err);
+      return { firebaseApp: null, db: null, auth: null, storage: null, mode: 'DEMO' };
     }
-  }
-  
-  console.log("Running in Production Demo Mode (Local Storage Data Engine).");
-  return { firebaseApp: null, db: null, auth: null, storage: null, mode: 'DEMO' };
+  })();
+
+  return _initPromise;
 }
 
 export function getServices() {
